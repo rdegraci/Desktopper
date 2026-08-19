@@ -1,0 +1,34 @@
+# Copy destination (created automatically if missing):
+#   ~/Library/Application Support/Desktopper/conf.yaml
+#
+# Tunable knobs. No secret keys. The host does not overwrite
+# an existing conf.yaml.
+
+server:
+  # Loopback only. Do not use 0.0.0.0 for the MVP.
+  bind: "127.0.0.1"
+  port: 8000
+
+llm:
+  # OpenAI-compatible chat completions URL (no trailing slash required).
+  # Local example: http://127.0.0.1:11434/v1
+  base_url: "http://127.0.0.1:11434/v1"
+  model: "llama3.2"
+  temperature: 0.0
+  timeout_seconds: 120
+  max_tokens: 4096
+
+app:
+  # IANA timezone for timestamps shown in the UI.
+  timezone: "America/New_York"
+  # Directory name under Application Support. Do not change after first run.
+  support_name: "Desktopper"
+
+logging:
+  # debug, info, warning, error
+  level: "info"
+  # JSON Lines file in the appdir. One object per line.
+  file: "desktopper.jsonl"
+  max_bytes: 2000000
+  backup_count: 3
+
