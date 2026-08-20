@@ -69,6 +69,12 @@
     });
   }
 
+  function navListScreens() {
+    return listScreens().filter(function (s) {
+      return s.nav !== false;
+    });
+  }
+
   function formScreenFor(tableName) {
     var screens = (schema && schema.screens) || [];
     var i;
@@ -80,20 +86,45 @@
     return null;
   }
 
+  function parseQuery(qs) {
+    var out = {};
+    if (!qs) {
+      return out;
+    }
+    qs.split("&").forEach(function (part) {
+      var bits = part.split("=");
+      if (!bits[0]) {
+        return;
+      }
+      out[decodeURIComponent(bits[0])] = decodeURIComponent(
+        bits.slice(1).join("=") || ""
+      );
+    });
+    return out;
+  }
+
   function parseHash() {
     var raw = (location.hash || "").replace(/^#/, "");
+    var qs = "";
+    var qi = raw.indexOf("?");
+    if (qi >= 0) {
+      qs = raw.slice(qi + 1);
+      raw = raw.slice(0, qi);
+    }
+    var query = parseQuery(qs);
     var parts = raw.split("/").filter(Boolean);
     if (parts[0] === "list" && parts[1]) {
-      return { kind: "list", table: parts[1] };
+      return { kind: "list", table: parts[1], query: query };
     }
     if (parts[0] === "form" && parts[1]) {
       return {
         kind: "form",
         table: parts[1],
         id: parts[2] ? Number(parts[2]) : null,
+        query: query,
       };
     }
-    return { kind: "home" };
+    return { kind: "home", query: query };
   }
 
   function go(hash) {
@@ -125,7 +156,7 @@
       return;
     }
     nav.textContent = "";
-    listScreens().forEach(function (screen) {
+    navListScreens().forEach(function (screen) {
       var a = el("a", {
         className: "nav-link",
         href: "#list/" + screen.table,
@@ -369,8 +400,148 @@
     return node.value;
   }
 
-  function confirmDelete(tableName, rowId) {
-    pendingDelete = { table: tableName, id: rowId };
+  function parentReturn(tableName, query) {
+    var table = tableDef(tableName);
+    var key;
+    query = query || {};
+    for (key in query) {
+      if (!Object.prototype.hasOwnProperty.call(query, key)) {
+        continue;
+      }
+      var col = ((table && table.columns) || []).filter(function (c) {
+        return c.name === key && c.widget === "fk" && c.fk && c.fk.table;
+      })[0];
+      if (col) {
+        return "#form/" + col.fk.table + "/" + query[key];
+      }
+    }
+    return "#list/" + tableName;
+  }
+
+  function drawRelated(container, parentId, related) {
+    if (!container || !parentId || !related || !related.length) {
+      return;
+    }
+    related.forEach(function (rel) {
+      if (!rel || !rel.table || !rel.fk) {
+        return;
+      }
+      var childTable = tableDef(rel.table);
+      if (!childTable) {
+        return;
+      }
+      var section = el("div", { className: "mt-4" });
+      var header = el("div", { className: "d-flex justify-content-between mb-2" });
+      header.appendChild(
+        el("h2", { className: "h5", text: rel.title || rel.table })
+      );
+      var add = el("button", {
+        className: "btn btn-sm btn-outline-primary",
+        type: "button",
+        text: "Add",
+      });
+      add.addEventListener("click", function () {
+        go("#form/" + rel.table + "?" + encodeURIComponent(rel.fk) + "=" + parentId);
+      });
+      header.appendChild(add);
+      section.appendChild(header);
+      var tbl = el("table", { className: "table table-sm" });
+      var thead = document.createElement("thead");
+      var hr = document.createElement("tr");
+      var colNames =
+        rel.columns && rel.columns.length
+          ? rel.columns.filter(function (name) {
+              return name !== rel.fk;
+            })
+          : visibleColumns(childTable)
+              .map(function (c) {
+                return c.name;
+              })
+              .filter(function (name) {
+                return name !== rel.fk;
+              });
+      colNames.forEach(function (cname) {
+        var col = (childTable.columns || []).filter(function (c) {
+          return c.name === cname;
+        })[0];
+        hr.appendChild(el("th", { text: (col && col.label) || cname }));
+      });
+      thead.appendChild(hr);
+      tbl.appendChild(thead);
+      var tbody = document.createElement("tbody");
+      tbl.appendChild(tbody);
+      section.appendChild(tbl);
+      container.appendChild(section);
+      var fkCols = colNames.filter(function (cname) {
+        var col = (childTable.columns || []).filter(function (c) {
+          return c.name === cname;
+        })[0];
+        return col && col.widget === "fk" && col.fk && col.fk.table;
+      });
+      var optLoads = fkCols.map(function (cname) {
+        var col = (childTable.columns || []).filter(function (c) {
+          return c.name === cname;
+        })[0];
+        return api(
+          "/api/tables/" + encodeURIComponent(col.fk.table) + "/options"
+        ).then(function (opts) {
+          return { name: cname, options: opts };
+        });
+      });
+      Promise.all(optLoads)
+        .then(function (pairs) {
+          var labels = {};
+          pairs.forEach(function (p) {
+            var map = {};
+            (p.options || []).forEach(function (item) {
+              map[String(item.id)] = item.label;
+            });
+            labels[p.name] = map;
+          });
+          return api(
+            "/api/tables/" +
+              encodeURIComponent(rel.table) +
+              "?" +
+              encodeURIComponent(rel.fk) +
+              "=" +
+              encodeURIComponent(String(parentId))
+          ).then(function (rows) {
+            tbody.textContent = "";
+            (rows || []).forEach(function (row) {
+              var tr = document.createElement("tr");
+              colNames.forEach(function (cname) {
+                var td = document.createElement("td");
+                var val = row[cname];
+                if (labels[cname] && val != null) {
+                  val = labels[cname][String(val)];
+                }
+                td.textContent = val == null ? "" : String(val);
+                tr.appendChild(td);
+              });
+              tr.addEventListener("click", function () {
+                go(
+                  "#form/" +
+                    rel.table +
+                    "/" +
+                    row.id +
+                    "?" +
+                    encodeURIComponent(rel.fk) +
+                    "=" +
+                    parentId
+                );
+              });
+              tbody.appendChild(tr);
+            });
+          });
+        })
+        .catch(function (err) {
+          showError(err.message);
+        });
+    });
+  }
+
+  function confirmDelete(tableName, rowId, after) {
+    pendingDelete = { table: tableName, id: rowId, after: after };
     var body = document.getElementById("confirm-body");
     if (body) {
       body.textContent = "Delete this record?";
@@ -381,10 +552,11 @@
     }
   }
 
-  function drawForm(tableName, rowId) {
+  function drawForm(tableName, rowId, query) {
     var main = document.getElementById("main");
     var table = tableDef(tableName);
     var screen = formScreenFor(tableName);
+    query = query || {};
     if (!main || !table) {
       drawEmpty(true);
       return;
@@ -396,7 +568,11 @@
       el("h1", { className: "h4 mb-3", text: rowId ? "Edit " + title : "New " + title })
     );
     var form = el("form", { id: "record-form" });
-    var cols = visibleColumns(table);
+    var related = (screen && screen.related) || [];
+    var after = parentReturn(tableName, query);
+    var cols = visibleColumns(table).filter(function (c) {
+      return query[c.name] === undefined;
+    });
     var fkLoads = cols
       .filter(function (c) {
         return c.widget === "fk" && c.fk && c.fk.table;
@@ -440,13 +616,13 @@
           text: "Delete",
         });
         del.addEventListener("click", function () {
-          confirmDelete(tableName, rowId);
+          confirmDelete(tableName, rowId, after);
         });
         actions.appendChild(del);
       }
       var cancel = el("a", {
         className: "btn btn-secondary",
-        href: "#list/" + tableName,
+        href: after,
         text: "Back",
       });
       actions.appendChild(cancel);
@@ -457,6 +633,14 @@
         var body = {};
         cols.forEach(function (col) {
           body[col.name] = readField(col);
+        });
+        Object.keys(query).forEach(function (key) {
+          var col = (table.columns || []).filter(function (c) {
+            return c.name === key && c.widget === "fk";
+          })[0];
+          if (col) {
+            body[key] = parseInt(query[key], 10);
+          }
         });
         var path = "/api/tables/" + encodeURIComponent(tableName);
         var method = "POST";
@@ -477,13 +661,20 @@
               return data;
             });
           })
-          .then(function () {
-            go("#list/" + tableName);
+          .then(function (data) {
+            if (related.length && data && data.id) {
+              go("#form/" + tableName + "/" + data.id);
+              return;
+            }
+            go(after);
           })
           .catch(function (err) {
             showError(err.message);
           });
       });
+      if (rowId) {
+        drawRelated(main, rowId, related);
+      }
     }
 
     Promise.all(fkLoads)
@@ -519,10 +710,21 @@
       return;
     }
     if (loc.kind === "form") {
-      drawForm(loc.table, loc.id);
+      drawForm(loc.table, loc.id, loc.query);
       return;
     }
-    var first = listScreens()[0];
+    var homeId = schema && schema.app && schema.app.home;
+    if (homeId) {
+      var screens = schema.screens || [];
+      var i;
+      for (i = 0; i < screens.length; i++) {
+        if (screens[i].id === homeId && screens[i].type === "list" && screens[i].table) {
+          go("#list/" + screens[i].table);
+          return;
+        }
+      }
+    }
+    var first = navListScreens()[0] || listScreens()[0];
     go("#list/" + first.table);
   }
 
@@ -553,7 +755,7 @@
             if (window.bootstrap && modalEl) {
               window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
             }
-            go("#list/" + info.table);
+            go(info.after || "#list/" + info.table);
           })
           .catch(function (err) {
             showError(err.message);

@@ -12,6 +12,7 @@ ALLOWED_DIFF_KEYS = {
     "add_tables",
     "add_columns",
     "add_screens",
+    "update_screens",
     "extend_enums",
     "update_labels",
     "hide_columns",
@@ -36,7 +37,10 @@ COLUMN_KEYS = {
     "default",
 }
 TABLE_KEYS = {"name", "label", "hidden", "columns"}
-SCREEN_KEYS = {"id", "type", "table", "title", "columns"}
+APP_KEYS = {"title", "prompt", "home"}
+SCREEN_KEYS = {"id", "type", "table", "title", "columns", "nav", "related"}
+UPDATE_SCREEN_KEYS = {"id", "title", "columns", "nav", "related"}
+RELATED_KEYS = {"table", "fk", "title", "columns"}
 
 
 class ValidationError(Exception):
@@ -158,13 +162,17 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
     if "app" in diff and diff["app"] is not None:
         if not isinstance(diff["app"], dict):
             raise ValidationError("bad_name", "app must be an object.")
-        extra_app = set(diff["app"].keys()) - {"title", "prompt"}
+        extra_app = set(diff["app"].keys()) - APP_KEYS
         if extra_app:
             raise ValidationError("unknown_key", "app has unknown keys.")
+        home = diff["app"].get("home")
+        if home is not None and not _is_name(home):
+            raise ValidationError("bad_name", "app.home must be a screen id.")
 
     add_tables = diff.get("add_tables") or []
     add_columns = diff.get("add_columns") or []
     add_screens = diff.get("add_screens") or []
+    update_screens = diff.get("update_screens") or []
     extend_enums = diff.get("extend_enums") or []
     update_labels = diff.get("update_labels") or []
     hide_columns = diff.get("hide_columns") or []
@@ -172,6 +180,7 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
         ("add_tables", add_tables),
         ("add_columns", add_columns),
         ("add_screens", add_screens),
+        ("update_screens", update_screens),
         ("extend_enums", extend_enums),
         ("update_labels", update_labels),
         ("hide_columns", hide_columns),
@@ -272,6 +281,49 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
         tname = item.get("table")
         if tname not in ptables:
             raise ValidationError("bad_name", f"Screen table {tname} is missing.")
+        if "nav" in item and not isinstance(item.get("nav"), bool):
+            raise ValidationError("bad_name", "Screen nav must be a boolean.")
+        if "related" in item:
+            if stype != "form":
+                raise ValidationError("bad_name", "related is only allowed on form screens.")
+            _check_related(ptables, tname, item.get("related"))
+
+    screen_by_id: dict[str, dict[str, Any]] = {}
+    for screen in schema.get("screens") or []:
+        if isinstance(screen, dict) and _is_name(screen.get("id")):
+            screen_by_id[screen["id"]] = copy.deepcopy(screen)
+    for item in add_screens:
+        screen_by_id[item["id"]] = copy.deepcopy(item)
+
+    for item in update_screens:
+        if not isinstance(item, dict):
+            raise ValidationError("bad_name", "update_screens items must be objects.")
+        extra_u = set(item.keys()) - UPDATE_SCREEN_KEYS
+        if extra_u:
+            raise ValidationError("unknown_key", "update_screens item has unknown keys.")
+        sid = item.get("id")
+        if not _is_name(sid) or sid not in screen_by_id:
+            raise ValidationError("bad_name", "update_screens id is missing.")
+        current = screen_by_id[sid]
+        if "nav" in item and not isinstance(item.get("nav"), bool):
+            raise ValidationError("bad_name", "Screen nav must be a boolean.")
+        if "related" in item:
+            if current.get("type") != "form":
+                raise ValidationError("bad_name", "related is only allowed on form screens.")
+            _check_related(ptables, current.get("table"), item.get("related"))
+        if "title" in item and not isinstance(item.get("title"), str):
+            raise ValidationError("bad_name", "Screen title must be a string.")
+        if "columns" in item:
+            if not isinstance(item.get("columns"), list):
+                raise ValidationError("bad_name", "Screen columns must be an array.")
+
+    home = None
+    if isinstance(diff.get("app"), dict):
+        home = diff["app"].get("home")
+    if home:
+        found = screen_by_id.get(home)
+        if not found or found.get("type") != "list":
+            raise ValidationError("bad_name", "app.home must be a list screen id.")
 
     for item in extend_enums:
         if not isinstance(item, dict):
@@ -327,6 +379,42 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             raise ValidationError("bad_name", "Cannot hide id.")
         if not _is_name(cname) or cname not in _column_map(ptables[tname]):
             raise ValidationError("bad_name", "hide_columns column is missing.")
+
+
+def _check_related(tables: dict[str, Any], form_table: Any, related: Any) -> None:
+    if not isinstance(related, list):
+        raise ValidationError("bad_name", "related must be an array.")
+    if not _is_name(form_table) or form_table not in tables:
+        raise ValidationError("bad_name", "related form table is missing.")
+    for item in related:
+        if not isinstance(item, dict):
+            raise ValidationError("bad_name", "related items must be objects.")
+        extra = set(item.keys()) - RELATED_KEYS
+        if extra:
+            raise ValidationError("unknown_key", "related item has unknown keys.")
+        tname = item.get("table")
+        fk_name = item.get("fk")
+        if not _is_name(tname) or tname not in tables:
+            raise ValidationError("bad_name", "related table is missing.")
+        if not _is_name(fk_name):
+            raise ValidationError("bad_name", "related fk name is bad.")
+        col = _column_map(tables[tname]).get(fk_name)
+        if not col or col.get("widget") != "fk":
+            raise ValidationError("bad_name", "related fk must be an fk column.")
+        target = (col.get("fk") or {}).get("table")
+        if target != form_table:
+            raise ValidationError("bad_name", "related fk must point at the form table.")
+        if "title" in item and not isinstance(item.get("title"), str):
+            raise ValidationError("bad_name", "related title must be a string.")
+        cols = item.get("columns")
+        if cols is None:
+            continue
+        if not isinstance(cols, list) or not all(isinstance(c, str) for c in cols):
+            raise ValidationError("bad_name", "related columns must be names.")
+        cmap = _column_map(tables[tname])
+        for cname in cols:
+            if cname not in cmap:
+                raise ValidationError("bad_name", f"related column {cname} is missing.")
 
 
 def _check_fk(tables: dict[str, Any], fk: dict[str, Any], *, context: str) -> None:

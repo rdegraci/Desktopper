@@ -133,11 +133,17 @@ def create_app(*, llm_complete=None) -> Flask:
         except ValueError:
             return jsonify({"error": "limit and offset must be integers."}), 400
         try:
+            filters = {
+                key: val
+                for key, val in request.args.items()
+                if key not in ("q", "limit", "offset")
+            }
             return jsonify(
                 list_rows_search(
                     cfg,
                     name,
                     q=request.args.get("q"),
+                    filters=filters or None,
                     limit=limit,
                     offset=offset,
                     request_id=g.request_id,

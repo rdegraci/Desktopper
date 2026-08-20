@@ -23,16 +23,19 @@ Return only this shape. Omit a key when that list is empty, or use an empty arra
 
 {
   "summary": "One or two sentences. Plain language. What you added.",
-  "app": { "title": "Short app title" },
+  "app": { "title": "Short app title", "home": "books_list" },
   "add_tables": [],
   "add_columns": [],
   "add_screens": [],
+  "update_screens": [],
   "extend_enums": [],
   "update_labels": [],
   "hide_columns": []
 }
 
-`app` is optional. Set it when the intent names the product or when the schema has no title yet.
+`app` is optional. Set `title` when the intent names the product or when the schema has no title yet. Set `home` to a list screen id that should open first.
+
+`update_screens` patches an existing screen by `id`. Use it to set `nav`, `related`, `title`, or `columns`. Do not change `type` or `table`.
 
 ## add_tables
 
@@ -98,30 +101,70 @@ Rules:
 
 ## add_screens
 
-Each item is one of:
+Each item is a list or a form.
+
+List:
 
 {
   "id": "books_list",
   "type": "list",
   "table": "books",
   "title": "Books",
-  "columns": ["title", "status"]
+  "columns": ["title", "status"],
+  "nav": true
 }
+
+Form:
 
 {
   "id": "books_form",
   "type": "form",
   "table": "books",
-  "title": "Book"
+  "title": "Book",
+  "related": [
+    {
+      "table": "book_authors",
+      "fk": "book_id",
+      "title": "Authors",
+      "columns": ["author_id", "role"]
+    }
+  ]
 }
 
 Screen `id` is snake_case and unique across the current schema and this diff.
 
-Every new user-facing table needs one list screen and one form screen unless that table is only a join table. A join table has two foreign keys and no other user fields. Do not add screens for a join table.
+`nav` is a boolean. Default true. Set `"nav": false` on join-table lists so they do not appear in the navbar.
+
+`related` is only allowed on form screens. Each item is a child list on that form. `table` is the child table. `fk` is an fk column on the child that points at the form table. The host filters child rows by the parent id and hides that fk on add/edit.
+
+Every user-facing catalog or primary noun needs one list screen and one form screen.
+
+A join table (two foreign keys, used to link two catalogs, with or without extra fields such as quantity) must:
+- have a form screen so the user can add a line from the parent
+- set the join list `nav` to false if you add a list
+- put a `related` block on the parent form
+
+Do not add a screen for a table that will not exist after this diff.
 
 List `columns` are names of visible columns. Keep the list short: two to five names.
 
-Do not add a screen for a table that will not exist after this diff.
+## update_screens
+
+Patch an existing screen. Example, attach children to a form that already exists:
+
+{
+  "id": "recipes_form",
+  "related": [
+    {
+      "table": "recipe_ingredients",
+      "fk": "recipe_id",
+      "title": "Ingredients",
+      "columns": ["ingredient_id", "quantity"]
+    }
+  ]
+}
+
+Or hide a join list: `{ "id": "recipe_ingredients_list", "nav": false }`
 
 ## extend_enums
 
@@ -187,14 +230,16 @@ Do not invent APIs, auth, or sync.
 
 ## Intent mapping
 
-Turn nouns into tables. Turn attributes into columns. Turn “belongs to” or “lent to” into a foreign key or a join table.
+Turn nouns into tables. Turn attributes into columns. Turn “belongs to” or “lent to” into a foreign key. Turn “has many of another noun with its own fields” into a catalog plus a join table, not a textarea.
 
 Examples:
 
 - “Contacts with name, email, and notes” → one table `contacts`, list and form screens.
-- “Also track follow-ups” when `contacts` exists → table `follow_ups` with `contact_id` fk, list and form.
+- “Also track follow-ups” when `contacts` exists → table `follow_ups` with `contact_id` fk, list and form, and `related` on the contacts form.
+- “Recipes with ingredients and quantities” → `recipes`, `ingredients`, join `recipe_ingredients` with quantity. Recipes form has `related`. Ingredients stay in the nav. Join list has `"nav": false`.
 - “Add a phone number” when `contacts` exists → `add_columns` only.
 - “Call it a Rolodex” → `app.title` and `update_labels`, no new tables if the model already fits.
+- If the join table already exists but the parent form has no `related`, use `update_screens`.
 
 If the user asks to delete data or wipe a table, do not emit destructive keys. Return `add_tables` empty and a `summary` that says the host cannot delete tables. Change nothing else.
 
@@ -202,7 +247,9 @@ If the user asks for a dashboard, chart, reminder, or login, ignore those parts.
 
 ## Quality
 
-Keep the model small. One table is better than three when the user described one list.
+Keep the model small. One table is better than three when the extra words are only attributes of one noun.
+
+Do not put a repeating list of other records into a textarea. That is a related child list.
 
 Use human labels with spaces and capitals. Use snake_case only in `name` and `id`.
 

@@ -17,6 +17,9 @@ class Slice7AppJsTests(unittest.TestCase):
     def test_hash_routes_and_search(self) -> None:
         self.assertIn("#list/", self.src)
         self.assertIn("#form/", self.src)
+        self.assertIn("nav !== false", self.src)
+        self.assertIn("related", self.src)
+        self.assertIn("app.home", self.src)
         self.assertIn("/api/search", self.src)
         self.assertIn("300", self.src)
         self.assertIn("/api/tables/", self.src)

@@ -107,10 +107,13 @@ def _merge_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, Any
         out["app"] = {"title": "Desktopper"}
 
     app = diff.get("app")
-    if isinstance(app, dict) and app.get("title"):
-        out["app"]["title"] = app["title"]
+    if isinstance(app, dict):
+        if app.get("title"):
+            out["app"]["title"] = app["title"]
         if app.get("prompt"):
             out["app"]["prompt"] = app["prompt"]
+        if app.get("home"):
+            out["app"]["home"] = app["home"]
 
     for item in diff.get("add_tables") or []:
         cols = _system_column_defs() + [
@@ -130,6 +133,21 @@ def _merge_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, Any
 
     for item in diff.get("add_screens") or []:
         out["screens"].append(copy.deepcopy(item))
+
+    for item in diff.get("update_screens") or []:
+        sid = item.get("id")
+        for screen in out["screens"]:
+            if not isinstance(screen, dict) or screen.get("id") != sid:
+                continue
+            if "title" in item:
+                screen["title"] = item["title"]
+            if "columns" in item:
+                screen["columns"] = copy.deepcopy(item["columns"])
+            if "nav" in item:
+                screen["nav"] = item["nav"]
+            if "related" in item:
+                screen["related"] = copy.deepcopy(item["related"])
+            break
 
     for item in diff.get("extend_enums") or []:
         for col in out["tables"][item["table"]].get("columns") or []:

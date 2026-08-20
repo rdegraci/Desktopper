@@ -98,11 +98,32 @@ def _where_for_tokens(
     return " AND " + " AND ".join(token_clauses), params
 
 
+def _fk_filter_sql(table: dict[str, Any], filters: dict[str, str]) -> tuple[str, list[int]]:
+    if not filters:
+        return "", []
+    cmap = {c["name"]: c for c in _columns(table)}
+    sql = ""
+    params: list[int] = []
+    for name, raw in filters.items():
+        if not NAME_RE.match(name):
+            raise CrudError(400, "Bad filter name.")
+        col = cmap.get(name)
+        if not col or col.get("widget") != "fk":
+            raise CrudError(400, f"Cannot filter on {name}.")
+        try:
+            params.append(int(raw))
+        except (TypeError, ValueError):
+            raise CrudError(400, f"{name} must be an integer.") from None
+        sql += " AND " + _quote_ident(name) + " = ?"
+    return sql, params
+
+
 def list_rows_search(
     cfg: AppConfig,
     table_name: str,
     *,
     q: str | None = None,
+    filters: dict[str, str] | None = None,
     limit: int = 50,
     offset: int = 0,
     request_id: str | None = None,
@@ -114,12 +135,13 @@ def list_rows_search(
     offset = max(0, int(offset))
     sql = _select_sql(table_name, table)
     extra, params = _where_for_tokens(schema, table_name, table, tokens)
-    if extra:
-        sql += " WHERE 1=1" + extra
+    filter_sql, filter_params = _fk_filter_sql(table, filters or {})
+    if extra or filter_sql:
+        sql += " WHERE 1=1" + filter_sql + extra
     sql += " ORDER BY " + _quote_ident("id") + " LIMIT ? OFFSET ?"
     conn = _connect(cfg)
     try:
-        cur = conn.execute(sql, tuple(params) + (limit, offset))
+        cur = conn.execute(sql, tuple(filter_params) + tuple(params) + (limit, offset))
         rows = [_row_to_dict(cur, row) for row in cur.fetchall()]
     finally:
         conn.close()
@@ -172,6 +194,8 @@ def global_search(
     conn = _connect(cfg)
     try:
         for screen in _list_screens(schema):
+            if screen.get("nav") is False:
+                continue
             tname = screen["table"]
             tables = _tables(schema)
             if tname not in tables:
