@@ -16,9 +16,9 @@ from app.crud import (
     get_row,
     insert_row,
     list_options,
-    list_rows,
     update_row,
 )
+from app.search import global_search, list_rows_search
 from app.log import (
     emit,
     log_config_load,
@@ -127,7 +127,34 @@ def create_app() -> Flask:
         except ValueError:
             return jsonify({"error": "limit and offset must be integers."}), 400
         try:
-            return jsonify(list_rows(cfg, name, limit=limit, offset=offset))
+            return jsonify(
+                list_rows_search(
+                    cfg,
+                    name,
+                    q=request.args.get("q"),
+                    limit=limit,
+                    offset=offset,
+                    request_id=g.request_id,
+                )
+            )
+        except CrudError as err:
+            return _crud_error(err)
+
+    @flask_app.get("/api/search")
+    def api_search():
+        try:
+            limit = int(request.args.get("limit", "50"))
+        except ValueError:
+            return jsonify({"error": "limit must be an integer."}), 400
+        try:
+            return jsonify(
+                global_search(
+                    cfg,
+                    request.args.get("q"),
+                    limit=limit,
+                    request_id=g.request_id,
+                )
+            )
         except CrudError as err:
             return _crud_error(err)
 
