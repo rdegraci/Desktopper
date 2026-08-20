@@ -14,10 +14,35 @@
       </div>
     </nav>
     <div class="container py-4">
-      <p class="text-muted" id="ops-placeholder">
-        Chat with the model comes in a later slice. This tab is Ops.
-      </p>
       <p class="small text-muted" id="schema-version"></p>
+      <form id="intent-form">
+        <label class="form-label" for="intent-text">Describe the app</label>
+        <textarea
+          class="form-control"
+          id="intent-text"
+          rows="6"
+          required
+        ></textarea>
+        <button type="submit" class="btn btn-primary mt-3" id="intent-submit">
+          Submit
+        </button>
+      </form>
+      <p class="mt-3" id="intent-summary"></p>
+      <p class="text-muted" id="intent-hint" hidden>
+        Refresh the App tab to see the change.
+      </p>
+      <p class="text-danger" id="intent-error" hidden></p>
+      <hr />
+      <button type="button" class="btn btn-outline-secondary" id="copy-logs">
+        Copy recent logs
+      </button>
+      <label class="form-label mt-3" for="logs-text">Logs</label>
+      <textarea
+        class="form-control"
+        id="logs-text"
+        rows="10"
+        readonly
+      ></textarea>
     </div>
     <script src="/js/bootstrap.bundle.min.js"></script>
     <script src="/js/ops.js"></script>

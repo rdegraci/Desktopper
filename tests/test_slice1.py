@@ -61,7 +61,8 @@ class Slice1FlaskTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         html = res.get_data(as_text=True)
         self.assertIn('href="/"', html)
-        self.assertIn("later slice", html)
+        self.assertIn("intent-text", html)
+        self.assertIn("schema-version", html)
 
     def test_schema_and_logs(self) -> None:
         res = self.client.get("/api/schema")

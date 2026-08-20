@@ -18,6 +18,9 @@ from app.crud import (
     list_options,
     update_row,
 )
+from app.engine import EngineError
+from app.intent import run_intent
+from app.llm import LlmError
 from app.search import global_search, list_rows_search
 from app.log import (
     emit,
@@ -26,6 +29,7 @@ from app.log import (
     read_recent_events,
     setup_logging,
 )
+from app.schema_validate import ValidationError
 
 STATIC_DIR = repo_root() / "static"
 BOOTSTRAP_CSS = STATIC_DIR / "css" / "bootstrap.min.css"
@@ -35,13 +39,14 @@ def _load_schema(appdir: Path) -> dict:
     return read_or_create_schema(appdir)
 
 
-def create_app() -> Flask:
+def create_app(*, llm_complete=None) -> Flask:
     cfg = load_config()
     setup_logging(cfg)
     log_config_load(cfg)
 
     flask_app = Flask(__name__)
     flask_app.config["DESKTOPPER_CFG"] = cfg
+    flask_app.config["LLM_COMPLETE"] = llm_complete
 
     @flask_app.before_request
     def _assign_request_id() -> None:
@@ -192,6 +197,30 @@ def create_app() -> Flask:
             return ("", 204)
         except CrudError as err:
             return _crud_error(err)
+
+    @flask_app.post("/api/intent")
+    def api_intent():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "JSON object required.", "error_code": "invalid_json"}), 400
+        text = body.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return jsonify({"error": "text is required.", "error_code": "invalid_json"}), 400
+        try:
+            result = run_intent(
+                cfg,
+                text.strip(),
+                request_id=g.request_id,
+                complete=flask_app.config.get("LLM_COMPLETE"),
+            )
+        except LlmError as exc:
+            status = 503 if exc.error_code == "llm_down" else 400
+            return jsonify({"error": exc.msg, "error_code": exc.error_code}), status
+        except ValidationError as exc:
+            return jsonify({"error": exc.msg, "error_code": exc.error_code}), 400
+        except EngineError as exc:
+            return jsonify({"error": exc.msg, "error_code": exc.error_code}), 500
+        return jsonify(result)
 
     return flask_app
 

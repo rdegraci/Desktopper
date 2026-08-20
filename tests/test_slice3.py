@@ -50,9 +50,8 @@ class Slice3SchemaTests(unittest.TestCase):
         self.assertNotIn("/api/intent", js)
         self.assertNotIn("window.open", js)
 
-    def test_ops_js_has_no_intent_post(self) -> None:
+    def test_ops_js_shows_schema_version(self) -> None:
         js = self.client.get("/js/ops.js").get_data(as_text=True)
-        self.assertNotIn("/api/intent", js)
         self.assertIn("schema.version", js)
 
 
