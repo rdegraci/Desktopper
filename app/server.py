@@ -10,6 +10,15 @@ from pathlib import Path
 from flask import Flask, g, jsonify, request, send_from_directory
 
 from app.config import BindRefusedError, load_config, read_or_create_schema, repo_root
+from app.crud import (
+    CrudError,
+    delete_row,
+    get_row,
+    insert_row,
+    list_options,
+    list_rows,
+    update_row,
+)
 from app.log import (
     emit,
     log_config_load,
@@ -99,6 +108,63 @@ def create_app() -> Flask:
         log_path = cfg.appdir / cfg.logging.file
         events = read_recent_events(log_path, limit)
         return jsonify({"events": events})
+
+    def _crud_error(err: CrudError):
+        return jsonify({"error": err.msg}), err.status
+
+    @flask_app.get("/api/tables/<name>/options")
+    def api_options(name: str):
+        try:
+            return jsonify(list_options(cfg, name))
+        except CrudError as err:
+            return _crud_error(err)
+
+    @flask_app.get("/api/tables/<name>")
+    def api_list(name: str):
+        try:
+            limit = int(request.args.get("limit", "50"))
+            offset = int(request.args.get("offset", "0"))
+        except ValueError:
+            return jsonify({"error": "limit and offset must be integers."}), 400
+        try:
+            return jsonify(list_rows(cfg, name, limit=limit, offset=offset))
+        except CrudError as err:
+            return _crud_error(err)
+
+    @flask_app.get("/api/tables/<name>/<int:row_id>")
+    def api_get(name: str, row_id: int):
+        try:
+            return jsonify(get_row(cfg, name, row_id))
+        except CrudError as err:
+            return _crud_error(err)
+
+    @flask_app.post("/api/tables/<name>")
+    def api_insert(name: str):
+        body = request.get_json(silent=True)
+        if body is None:
+            body = {}
+        try:
+            return jsonify(insert_row(cfg, name, body, request_id=g.request_id)), 201
+        except CrudError as err:
+            return _crud_error(err)
+
+    @flask_app.put("/api/tables/<name>/<int:row_id>")
+    def api_update(name: str, row_id: int):
+        body = request.get_json(silent=True)
+        if body is None:
+            body = {}
+        try:
+            return jsonify(update_row(cfg, name, row_id, body, request_id=g.request_id))
+        except CrudError as err:
+            return _crud_error(err)
+
+    @flask_app.delete("/api/tables/<name>/<int:row_id>")
+    def api_delete(name: str, row_id: int):
+        try:
+            delete_row(cfg, name, row_id, request_id=g.request_id)
+            return ("", 204)
+        except CrudError as err:
+            return _crud_error(err)
 
     return flask_app
 
