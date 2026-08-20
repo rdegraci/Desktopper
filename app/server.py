@@ -9,7 +9,7 @@ from pathlib import Path
 
 from flask import Flask, g, jsonify, request, send_from_directory
 
-from app.config import BindRefusedError, load_config, repo_root
+from app.config import BindRefusedError, load_config, read_or_create_schema, repo_root
 from app.log import (
     emit,
     log_config_load,
@@ -23,8 +23,7 @@ BOOTSTRAP_CSS = STATIC_DIR / "css" / "bootstrap.min.css"
 
 
 def _load_schema(appdir: Path) -> dict:
-    path = appdir / "schema.json"
-    return json.loads(path.read_text(encoding="utf-8"))
+    return read_or_create_schema(appdir)
 
 
 def create_app() -> Flask:

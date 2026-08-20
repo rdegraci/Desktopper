@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -110,19 +111,54 @@ def _copy_if_missing(src: Path, dest: Path) -> None:
     shutil.copy2(src, dest)
 
 
+def schema_path(appdir: Path) -> Path:
+    return appdir / "schema.json"
+
+
+def write_empty_schema(appdir: Path) -> dict:
+    path = schema_path(appdir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "version": EMPTY_SCHEMA["version"],
+        "app": dict(EMPTY_SCHEMA["app"]),
+        "tables": {},
+        "screens": [],
+    }
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    return payload
+
+
+def read_or_create_schema(appdir: Path) -> dict:
+    path = schema_path(appdir)
+    if not path.is_file():
+        return write_empty_schema(appdir)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return write_empty_schema(appdir)
+    if not isinstance(data, dict):
+        return write_empty_schema(appdir)
+    data.setdefault("version", 0)
+    data.setdefault("app", {"title": "Desktopper"})
+    if not isinstance(data.get("app"), dict):
+        data["app"] = {"title": "Desktopper"}
+    data["app"].setdefault("title", "Desktopper")
+    data.setdefault("tables", {})
+    data.setdefault("screens", [])
+    if not isinstance(data["tables"], dict):
+        data["tables"] = {}
+    if not isinstance(data["screens"], list):
+        data["screens"] = []
+    return data
+
+
 def ensure_appdir(appdir: Path | None = None) -> Path:
     path = appdir if appdir is not None else resolve_appdir()
     path.mkdir(parents=True, exist_ok=True)
     (path / "migrations").mkdir(exist_ok=True)
     _copy_if_missing(REPO_ROOT / ".env.example", path / ".env")
     _copy_if_missing(REPO_ROOT / "config.yaml.example", path / "conf.yaml")
-    schema_path = path / "schema.json"
-    if not schema_path.exists():
-        import json
-
-        schema_path.write_text(
-            json.dumps(EMPTY_SCHEMA, indent=2) + "\n", encoding="utf-8"
-        )
+    read_or_create_schema(path)
     return path
 
 

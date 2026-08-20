@@ -1,5 +1,7 @@
 (function () {
   var titleEl = document.getElementById("app-title");
+  var emptyEl = document.getElementById("empty-state");
+
   fetch("/api/schema")
     .then(function (res) {
       if (!res.ok) {
@@ -8,13 +10,20 @@
       return res.json();
     })
     .then(function (schema) {
-      if (!schema || !schema.app || !schema.app.title) {
+      if (!schema) {
         return;
       }
+      var title =
+        schema.app && schema.app.title ? schema.app.title : "Desktopper";
       if (titleEl) {
-        titleEl.textContent = schema.app.title;
+        titleEl.textContent = title;
       }
-      document.title = schema.app.title;
+      document.title = title;
+      var screens = schema.screens;
+      var empty = !screens || !screens.length;
+      if (emptyEl) {
+        emptyEl.hidden = !empty;
+      }
     })
     .catch(function () {});
 })();
