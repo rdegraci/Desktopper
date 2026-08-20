@@ -7,15 +7,8 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from app.config import AppConfig, redact_value, repo_root
+from app.config import AppConfig, redact_value
 from app.providers import resolve_provider
-
-FALLBACK_PROMPT = """You are the schema editor for a local SQLite app.
-Return one JSON object only. No markdown fences. No HTML, JavaScript, or SQL.
-Whitelist keys: summary, app, add_tables, add_columns, add_screens, extend_enums, update_labels, hide_columns.
-Additive changes only. Table and column names snake_case [a-z][a-z0-9_]*.
-Types INTEGER REAL TEXT. Do not include id, created_at, or updated_at on new tables.
-"""
 
 
 class LlmError(Exception):
@@ -24,13 +17,6 @@ class LlmError(Exception):
         self.error_code = error_code
         self.msg = msg
         self.output_head = output_head
-
-
-def load_system_prompt() -> str:
-    path = repo_root() / "docs" / "cache" / "MVP-PROMPT.md"
-    if path.is_file():
-        return path.read_text(encoding="utf-8")
-    return FALLBACK_PROMPT
 
 
 def strip_fences(text: str) -> str:

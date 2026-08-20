@@ -8,9 +8,10 @@ from typing import Any, Callable
 
 from app.config import AppConfig, read_or_create_schema
 from app.engine import EngineError, _quote_ident, apply_diff, db_path
-from app.llm import LlmError, chat_completion, load_system_prompt, parse_json_object
+from app.llm import LlmError, chat_completion, parse_json_object
 from app.log import emit
 from app.schema_validate import NAME_RE, ValidationError
+from app.system_prompt import load_system_prompt
 
 
 def collect_stats(cfg: AppConfig, schema: dict[str, Any]) -> dict[str, Any]:
