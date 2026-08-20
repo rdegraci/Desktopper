@@ -20,10 +20,21 @@ class Slice7AppJsTests(unittest.TestCase):
         self.assertIn("nav !== false", self.src)
         self.assertIn("related", self.src)
         self.assertIn("app.home", self.src)
+        self.assertIn("related-inline-form", self.src)
+        self.assertIn("data-inline-related", self.src)
         self.assertIn("/api/search", self.src)
         self.assertIn("300", self.src)
         self.assertIn("/api/tables/", self.src)
         self.assertIn("confirm-modal", self.src)
+
+    def test_inline_related_create_stays_on_parent(self) -> None:
+        self.assertIn("related-inline-form", self.src)
+        self.assertIn("rel-", self.src)
+        # Add must not navigate away to child form for create.
+        self.assertNotIn(
+            'go("#form/" + rel.table + "?" + encodeURIComponent(rel.fk)',
+            self.src,
+        )
 
     def test_ops_is_html_link(self) -> None:
         self.assertIn('href="/ops"', self.html)

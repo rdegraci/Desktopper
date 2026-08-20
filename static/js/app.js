@@ -319,16 +319,21 @@
     load("");
   }
 
-  function widgetInput(col, value, options) {
+  function fieldId(col, idPrefix) {
+    return (idPrefix || "f-") + col.name;
+  }
+
+  function widgetInput(col, value, options, idPrefix) {
     var widget = col.widget || "text";
     var name = col.name;
+    var fid = fieldId(col, idPrefix);
     if (widget === "textarea") {
-      var ta = el("textarea", { className: "form-control", id: "f-" + name, name: name });
+      var ta = el("textarea", { className: "form-control", id: fid, name: name });
       ta.value = value == null ? "" : String(value);
       return ta;
     }
     if (widget === "select" || widget === "fk") {
-      var sel = el("select", { className: "form-select", id: "f-" + name, name: name });
+      var sel = el("select", { className: "form-select", id: fid, name: name });
       sel.appendChild(el("option", { value: "", text: "" }));
       if (widget === "select" && col.enum) {
         col.enum.forEach(function (item) {
@@ -357,7 +362,7 @@
       var chk = el("input", {
         className: "form-check-input",
         type: "checkbox",
-        id: "f-" + name,
+        id: fid,
         name: name,
       });
       chk.checked = value === 1 || value === true;
@@ -367,15 +372,15 @@
     var inp = el("input", {
       className: "form-control",
       type: type,
-      id: "f-" + name,
+      id: fid,
       name: name,
     });
     inp.value = value == null ? "" : String(value);
     return inp;
   }
 
-  function readField(col) {
-    var node = document.getElementById("f-" + col.name);
+  function readField(col, idPrefix) {
+    var node = document.getElementById(fieldId(col, idPrefix));
     if (!node) {
       return undefined;
     }
@@ -418,6 +423,23 @@
     return "#list/" + tableName;
   }
 
+  function relatedFieldCols(childTable, rel) {
+    return visibleColumns(childTable).filter(function (c) {
+      return c.name !== rel.fk;
+    });
+  }
+
+  function relatedListCols(childTable, rel) {
+    if (rel.columns && rel.columns.length) {
+      return rel.columns.filter(function (name) {
+        return name !== rel.fk;
+      });
+    }
+    return relatedFieldCols(childTable, rel).map(function (c) {
+      return c.name;
+    });
+  }
+
   function drawRelated(container, parentId, related) {
     if (!container || !parentId || !related || !related.length) {
       return;
@@ -440,26 +462,19 @@
         type: "button",
         text: "Add",
       });
-      add.addEventListener("click", function () {
-        go("#form/" + rel.table + "?" + encodeURIComponent(rel.fk) + "=" + parentId);
-      });
       header.appendChild(add);
       section.appendChild(header);
+
+      var inline = el("div", { className: "border rounded p-3 mb-3", hidden: "hidden" });
+      inline.setAttribute("data-inline-related", rel.table);
+      section.appendChild(inline);
+
       var tbl = el("table", { className: "table table-sm" });
       var thead = document.createElement("thead");
       var hr = document.createElement("tr");
-      var colNames =
-        rel.columns && rel.columns.length
-          ? rel.columns.filter(function (name) {
-              return name !== rel.fk;
-            })
-          : visibleColumns(childTable)
-              .map(function (c) {
-                return c.name;
-              })
-              .filter(function (name) {
-                return name !== rel.fk;
-              });
+      var colNames = relatedListCols(childTable, rel);
+      var fieldCols = relatedFieldCols(childTable, rel);
+      var idPrefix = "rel-" + rel.table + "-";
       colNames.forEach(function (cname) {
         var col = (childTable.columns || []).filter(function (c) {
           return c.name === cname;
@@ -472,67 +487,163 @@
       tbl.appendChild(tbody);
       section.appendChild(tbl);
       container.appendChild(section);
-      var fkCols = colNames.filter(function (cname) {
-        var col = (childTable.columns || []).filter(function (c) {
-          return c.name === cname;
-        })[0];
-        return col && col.widget === "fk" && col.fk && col.fk.table;
+
+      var fkNames = {};
+      fieldCols.forEach(function (c) {
+        if (c.widget === "fk" && c.fk && c.fk.table) {
+          fkNames[c.name] = c.fk.table;
+        }
       });
-      var optLoads = fkCols.map(function (cname) {
+      colNames.forEach(function (cname) {
         var col = (childTable.columns || []).filter(function (c) {
           return c.name === cname;
         })[0];
+        if (col && col.widget === "fk" && col.fk && col.fk.table) {
+          fkNames[cname] = col.fk.table;
+        }
+      });
+      var optLoads = Object.keys(fkNames).map(function (cname) {
         return api(
-          "/api/tables/" + encodeURIComponent(col.fk.table) + "/options"
+          "/api/tables/" + encodeURIComponent(fkNames[cname]) + "/options"
         ).then(function (opts) {
           return { name: cname, options: opts };
         });
       });
+
+      function paintRows(labels) {
+        return api(
+          "/api/tables/" +
+            encodeURIComponent(rel.table) +
+            "?" +
+            encodeURIComponent(rel.fk) +
+            "=" +
+            encodeURIComponent(String(parentId))
+        ).then(function (rows) {
+          tbody.textContent = "";
+          (rows || []).forEach(function (row) {
+            var tr = document.createElement("tr");
+            colNames.forEach(function (cname) {
+              var td = document.createElement("td");
+              var val = row[cname];
+              if (labels[cname] && val != null) {
+                val = labels[cname][String(val)];
+              }
+              td.textContent = val == null ? "" : String(val);
+              tr.appendChild(td);
+            });
+            tr.addEventListener("click", function () {
+              go(
+                "#form/" +
+                  rel.table +
+                  "/" +
+                  row.id +
+                  "?" +
+                  encodeURIComponent(rel.fk) +
+                  "=" +
+                  parentId
+              );
+            });
+            tbody.appendChild(tr);
+          });
+        });
+      }
+
+      function hideInline() {
+        inline.hidden = true;
+        inline.textContent = "";
+      }
+
+      function showInline(fkMap) {
+        inline.textContent = "";
+        inline.hidden = false;
+        var form = el("form", { className: "related-inline-form" });
+        fieldCols.forEach(function (col) {
+          var group = el("div", { className: "mb-2" });
+          var label = el("label", {
+            className: "form-label",
+            text: col.label || col.name,
+          });
+          label.setAttribute("for", fieldId(col, idPrefix));
+          group.appendChild(label);
+          var opts = fkMap[col.name];
+          if (col.widget === "checkbox") {
+            var wrap = el("div", { className: "form-check" });
+            wrap.appendChild(widgetInput(col, null, opts, idPrefix));
+            group.appendChild(wrap);
+          } else {
+            group.appendChild(widgetInput(col, null, opts, idPrefix));
+          }
+          form.appendChild(group);
+        });
+        var actions = el("div", { className: "d-flex gap-2" });
+        var save = el("button", {
+          className: "btn btn-sm btn-primary",
+          type: "submit",
+          text: "Save",
+        });
+        var cancel = el("button", {
+          className: "btn btn-sm btn-secondary",
+          type: "button",
+          text: "Cancel",
+        });
+        cancel.addEventListener("click", function () {
+          hideInline();
+        });
+        actions.appendChild(save);
+        actions.appendChild(cancel);
+        form.appendChild(actions);
+        form.addEventListener("submit", function (ev) {
+          ev.preventDefault();
+          showError("");
+          var body = {};
+          body[rel.fk] = parentId;
+          fieldCols.forEach(function (col) {
+            body[col.name] = readField(col, idPrefix);
+          });
+          fetch("/api/tables/" + encodeURIComponent(rel.table), {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          })
+            .then(function (res) {
+              return res.json().then(function (data) {
+                if (!res.ok) {
+                  throw new Error((data && data.error) || res.statusText);
+                }
+                return data;
+              });
+            })
+            .then(function () {
+              hideInline();
+              return paintRows(labelMaps);
+            })
+            .catch(function (err) {
+              showError(err.message);
+            });
+        });
+        inline.appendChild(form);
+      }
+
+      var labelMaps = {};
       Promise.all(optLoads)
         .then(function (pairs) {
-          var labels = {};
+          var fkMap = {};
           pairs.forEach(function (p) {
+            fkMap[p.name] = p.options;
             var map = {};
             (p.options || []).forEach(function (item) {
               map[String(item.id)] = item.label;
             });
-            labels[p.name] = map;
+            labelMaps[p.name] = map;
           });
-          return api(
-            "/api/tables/" +
-              encodeURIComponent(rel.table) +
-              "?" +
-              encodeURIComponent(rel.fk) +
-              "=" +
-              encodeURIComponent(String(parentId))
-          ).then(function (rows) {
-            tbody.textContent = "";
-            (rows || []).forEach(function (row) {
-              var tr = document.createElement("tr");
-              colNames.forEach(function (cname) {
-                var td = document.createElement("td");
-                var val = row[cname];
-                if (labels[cname] && val != null) {
-                  val = labels[cname][String(val)];
-                }
-                td.textContent = val == null ? "" : String(val);
-                tr.appendChild(td);
-              });
-              tr.addEventListener("click", function () {
-                go(
-                  "#form/" +
-                    rel.table +
-                    "/" +
-                    row.id +
-                    "?" +
-                    encodeURIComponent(rel.fk) +
-                    "=" +
-                    parentId
-                );
-              });
-              tbody.appendChild(tr);
-            });
+          add.addEventListener("click", function () {
+            if (!inline.hidden) {
+              hideInline();
+              return;
+            }
+            showInline(fkMap);
           });
+          return paintRows(labelMaps);
         })
         .catch(function (err) {
           showError(err.message);
