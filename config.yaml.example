@@ -10,13 +10,22 @@ server:
   port: 8000
 
 llm:
-  # OpenAI-compatible chat completions URL (no trailing slash required).
-  # Local example: http://127.0.0.1:11434/v1
-  base_url: "http://127.0.0.1:11434/v1"
-  model: "llama3.2"
+  # Named providers fill base_url and a default model.
+  # Supported: xai, openai_compatible
+  provider: xai
+  model: grok-4.6
+  # Optional override. xai defaults to https://api.x.ai/v1
+  # base_url: "https://api.x.ai/v1"
   temperature: 0.0
-  timeout_seconds: 120
+  timeout_seconds: 180
   max_tokens: 4096
+  # xai only: low, medium, high, xhigh
+  reasoning_effort: low
+
+  # Local OpenAI-compatible (Ollama):
+  # provider: openai_compatible
+  # base_url: "http://127.0.0.1:11434/v1"
+  # model: llama3.2
 
 app:
   # IANA timezone for timestamps shown in the UI.
@@ -31,4 +40,3 @@ logging:
   file: "desktopper.jsonl"
   max_bytes: 2000000
   backup_count: 3
-

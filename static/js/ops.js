@@ -57,6 +57,23 @@
     })
     .catch(function () {});
 
+  function loadLogs() {
+    fetch("/api/logs")
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("logs");
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        var text = JSON.stringify(data.events || [], null, 2);
+        if (logsEl) {
+          logsEl.value = text;
+        }
+        return text;
+      });
+  }
+
   if (formEl) {
     formEl.addEventListener("submit", function (ev) {
       ev.preventDefault();
@@ -77,6 +94,7 @@
           });
         })
         .then(function (result) {
+          loadLogs();
           if (!result.ok) {
             var err = result.body && result.body.error
               ? result.body.error
@@ -98,6 +116,7 @@
           }
         })
         .catch(function () {
+          loadLogs();
           showError("Intent request failed.");
         });
     });

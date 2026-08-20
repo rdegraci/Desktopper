@@ -20,7 +20,7 @@ from app.crud import (
 )
 from app.engine import EngineError
 from app.intent import run_intent
-from app.llm import LlmError
+from app.llm import LlmError, public_error_message
 from app.search import global_search, list_rows_search
 from app.log import (
     emit,
@@ -29,6 +29,7 @@ from app.log import (
     read_recent_events,
     setup_logging,
 )
+from app.providers import UnknownLlmProviderError
 from app.schema_validate import ValidationError
 
 STATIC_DIR = repo_root() / "static"
@@ -215,7 +216,9 @@ def create_app(*, llm_complete=None) -> Flask:
             )
         except LlmError as exc:
             status = 503 if exc.error_code == "llm_down" else 400
-            return jsonify({"error": exc.msg, "error_code": exc.error_code}), status
+            return jsonify(
+                {"error": public_error_message(exc), "error_code": exc.error_code}
+            ), status
         except ValidationError as exc:
             return jsonify({"error": exc.msg, "error_code": exc.error_code}), 400
         except EngineError as exc:
@@ -256,7 +259,7 @@ def main() -> None:
         sys.exit(1)
     try:
         cfg = load_config()
-    except BindRefusedError as exc:
+    except (BindRefusedError, UnknownLlmProviderError) as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
     app = create_app()

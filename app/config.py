@@ -12,6 +12,12 @@ from typing import Any
 
 import yaml
 
+from app.providers import (
+    REASONING_EFFORTS,
+    pick_api_key,
+    resolve_provider,
+)
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_SUPPORT_NAME = "Desktopper"
 EMPTY_SCHEMA = {
@@ -34,11 +40,13 @@ class BindRefusedError(Exception):
 
 @dataclass
 class LlmConfig:
+    provider: str
     base_url: str
     model: str
     temperature: float
     timeout_seconds: int
     max_tokens: int
+    reasoning_effort: str | None
 
 
 @dataclass
@@ -67,6 +75,7 @@ class AppConfig:
             "port": self.port,
             "timezone": self.timezone,
             "llm": {
+                "provider": self.llm.provider,
                 "base_url": self.llm.base_url,
                 "model": self.llm.model,
             },
@@ -179,7 +188,15 @@ def load_config(appdir: Path | None = None) -> AppConfig:
         raise BindRefusedError(bind)
 
     env = _parse_env_file(path / ".env")
-    api_key = env.get("LLM_API_KEY", "")
+    spec = resolve_provider(llm_raw.get("provider"))
+    api_key = pick_api_key(env, spec)
+
+    base_url = str(llm_raw.get("base_url") or spec.base_url).strip()
+    model = str(llm_raw.get("model") or spec.default_model).strip()
+    effort_raw = str(llm_raw.get("reasoning_effort") or "").strip().lower()
+    reasoning_effort = None
+    if spec.reasoning:
+        reasoning_effort = effort_raw if effort_raw in REASONING_EFFORTS else "low"
 
     cfg = AppConfig(
         appdir=path,
@@ -188,11 +205,13 @@ def load_config(appdir: Path | None = None) -> AppConfig:
         timezone=str(app_raw.get("timezone", "America/New_York")),
         support_name=str(app_raw.get("support_name", DEFAULT_SUPPORT_NAME)),
         llm=LlmConfig(
-            base_url=str(llm_raw.get("base_url", "http://127.0.0.1:11434/v1")),
-            model=str(llm_raw.get("model", "llama3.2")),
+            provider=spec.name,
+            base_url=base_url,
+            model=model,
             temperature=float(llm_raw.get("temperature", 0.0)),
             timeout_seconds=int(llm_raw.get("timeout_seconds", 120)),
             max_tokens=int(llm_raw.get("max_tokens", 4096)),
+            reasoning_effort=reasoning_effort,
         ),
         logging=LoggingConfig(
             level=str(log_raw.get("level", "info")).lower(),
@@ -206,11 +225,12 @@ def load_config(appdir: Path | None = None) -> AppConfig:
 
 
 _SK_RE = re.compile(r"sk-[A-Za-z0-9]{20,}")
+_XAI_RE = re.compile(r"xai-[A-Za-z0-9_-]{20,}")
 
 
 def redact_value(value: Any) -> Any:
     if isinstance(value, str):
-        return _SK_RE.sub("[redacted]", value)
+        return _XAI_RE.sub("[redacted]", _SK_RE.sub("[redacted]", value))
     if isinstance(value, dict):
         return {k: redact_value(v) for k, v in value.items()}
     if isinstance(value, list):

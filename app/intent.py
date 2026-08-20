@@ -59,7 +59,7 @@ def run_intent(
         msg="Calling the model.",
         request_id=request_id,
         schema_version=version_before,
-        detail={"model": cfg.llm.model, "intent_len": len(text)},
+        detail={"model": cfg.llm.model, "provider": cfg.llm.provider, "intent_len": len(text)},
     )
     try:
         if complete is not None:

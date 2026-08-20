@@ -121,6 +121,7 @@ def log_config_load(cfg: AppConfig, request_id: str | None = None) -> None:
         detail={
             "bind": cfg.bind,
             "port": cfg.port,
+            "llm.provider": cfg.llm.provider,
             "llm.base_url": cfg.llm.base_url,
             "llm.model": cfg.llm.model,
         },

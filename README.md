@@ -48,12 +48,14 @@ Tests must set `DESKTOPPER_APPDIR` to a temporary directory.
 
 | File | Role |
 | --- | --- |
-| Repo `.env.example` | Template. Live copy is `appdir/.env`. Holds `LLM_API_KEY`. |
-| Repo `config.yaml.example` | Template. Live copy is `appdir/conf.yaml`. Holds bind, port, LLM URL, model, timeouts, timezone, log knobs. |
+| Repo `.env.example` | Template. Live copy is `appdir/.env`. Holds `LLM_API_KEY` (or `XAI_API_KEY` for xAI). |
+| Repo `config.yaml.example` | Template. Live copy is `appdir/conf.yaml`. Holds bind, port, LLM provider, model, timeouts, timezone, log knobs. |
 
 Do not put the API key in YAML. Do not commit live `.env` or `conf.yaml`. The server does not serve those files over HTTP.
 
 Edit knobs in Application Support, then restart the process.
+
+Named LLM providers live under `llm.provider` in `conf.yaml`. `xai` uses `https://api.x.ai/v1` and defaults to `grok-4.6`. `openai_compatible` uses the URL you set (local Ollama is valid). Put the key in `.env` only.
 
 ## Use
 
