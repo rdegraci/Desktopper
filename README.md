@@ -59,6 +59,14 @@ Edit knobs in Application Support, then restart the process.
 
 Home (`/`) is the generated app: lists, forms, and search. It has no chat box.
 
+Until Ops chat exists, you can plant a demo schema:
+
+1. Start the server.
+2. Run `python3 tools/seed_schema.py`
+3. Refresh Safari.
+
+Hash routes: `#list/contacts` and `#form/contacts/1`.
+
 The navbar **Ops** link uses `href="/ops"` and `target="_blank"`. You must click it. The app does not open Ops by itself and does not redirect `/` to `/ops`.
 
 Ops (`/ops`) is where you talk to the LLM (when that slice is present). After a successful schema change, refresh the home tab. Home does not live-update.
