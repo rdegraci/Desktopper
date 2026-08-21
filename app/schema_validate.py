@@ -13,6 +13,7 @@ ALLOWED_DIFF_KEYS = {
     "add_columns",
     "add_screens",
     "update_screens",
+    "update_tables",
     "extend_enums",
     "update_labels",
     "hide_columns",
@@ -36,7 +37,9 @@ COLUMN_KEYS = {
     "pk",
     "default",
 }
-TABLE_KEYS = {"name", "label", "hidden", "columns"}
+TABLE_KEYS = {"name", "label", "hidden", "columns", "role"}
+UPDATE_TABLE_KEYS = {"name", "role"}
+TABLE_ROLES = {"primary", "lookup"}
 APP_KEYS = {"title", "prompt", "home"}
 SCREEN_KEYS = {
     "id",
@@ -82,6 +85,21 @@ def _table_map(schema: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(tables, dict):
         return {}
     return tables
+
+
+def table_role(table: Any) -> str:
+    if isinstance(table, dict) and table.get("role") == "lookup":
+        return "lookup"
+    return "primary"
+
+
+def _check_table_role(role: Any, *, context: str) -> None:
+    if role is None:
+        return
+    if role not in TABLE_ROLES:
+        raise ValidationError(
+            "bad_name", f"{context} role must be primary or lookup."
+        )
 
 
 def _column_map(table: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -158,15 +176,26 @@ def _project_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, A
             )
         for col in item.get("columns") or []:
             cols.append(copy.deepcopy(col))
-        tables[name] = {
+        entry: dict[str, Any] = {
             "label": item.get("label", name),
             "hidden": bool(item.get("hidden", False)),
             "columns": cols,
         }
+        if item.get("role") in TABLE_ROLES:
+            entry["role"] = item["role"]
+        tables[name] = entry
     projected["tables"] = tables
     for item in diff.get("add_columns") or []:
         tname = item["table"]
         tables[tname].setdefault("columns", []).append(copy.deepcopy(item["column"]))
+    for item in diff.get("update_tables") or []:
+        if not isinstance(item, dict):
+            continue
+        tname = item.get("name")
+        if tname not in tables:
+            continue
+        if "role" in item:
+            tables[tname]["role"] = item["role"]
     return projected
 
 
@@ -196,6 +225,7 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
     add_columns = diff.get("add_columns") or []
     add_screens = diff.get("add_screens") or []
     update_screens = diff.get("update_screens") or []
+    update_tables = diff.get("update_tables") or []
     extend_enums = diff.get("extend_enums") or []
     update_labels = diff.get("update_labels") or []
     hide_columns = diff.get("hide_columns") or []
@@ -204,6 +234,7 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
         ("add_columns", add_columns),
         ("add_screens", add_screens),
         ("update_screens", update_screens),
+        ("update_tables", update_tables),
         ("extend_enums", extend_enums),
         ("update_labels", update_labels),
         ("hide_columns", hide_columns),
@@ -225,6 +256,8 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
         if name in existing or name in new_names:
             raise ValidationError("bad_name", f"Table {name} already exists.")
         new_names.add(name)
+        if "role" in item:
+            _check_table_role(item.get("role"), context=f"table {name}")
         columns = item.get("columns") or []
         if not isinstance(columns, list):
             raise ValidationError("bad_name", f"Table {name} columns must be an array.")
@@ -234,6 +267,21 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             if cdef["name"] in seen_cols:
                 raise ValidationError("bad_name", f"Duplicate column on {name}.")
             seen_cols.add(cdef["name"])
+
+    for item in update_tables:
+        if not isinstance(item, dict):
+            raise ValidationError("bad_name", "update_tables items must be objects.")
+        extra_ut = set(item.keys()) - UPDATE_TABLE_KEYS
+        if extra_ut:
+            raise ValidationError("unknown_key", "update_tables item has unknown keys.")
+        tname = item.get("name")
+        if not _is_name(tname) or tname not in existing:
+            raise ValidationError("bad_name", "update_tables name is missing.")
+        if tname in new_names:
+            raise ValidationError("bad_name", "update_tables cannot target a new table.")
+        if "role" not in item:
+            raise ValidationError("bad_name", "update_tables must set role.")
+        _check_table_role(item.get("role"), context=f"update_tables {tname}")
 
     for item in add_columns:
         if not isinstance(item, dict):
@@ -369,10 +417,17 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
     home = None
     if isinstance(diff.get("app"), dict):
         home = diff["app"].get("home")
+    if not home:
+        home = (schema.get("app") or {}).get("home")
     if home:
         found = screen_by_id.get(home)
         if not found or found.get("type") != "list":
             raise ValidationError("bad_name", "app.home must be a list screen id.")
+        home_table = ptables.get(found.get("table"))
+        if table_role(home_table) == "lookup":
+            raise ValidationError(
+                "bad_name", "app.home must be a primary list screen."
+            )
 
     for item in extend_enums:
         if not isinstance(item, dict):

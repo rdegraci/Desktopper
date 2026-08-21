@@ -28,14 +28,17 @@ Return only this shape. Omit a key when that list is empty, or use an empty arra
   "add_columns": [],
   "add_screens": [],
   "update_screens": [],
+  "update_tables": [],
   "extend_enums": [],
   "update_labels": [],
   "hide_columns": []
 }
 
-`app` is optional. Set `title` when the intent names the product or when the schema has no title yet. Set `home` to a list screen id that should open first.
+`app` is optional. Set `title` when the intent names the product or when the schema has no title yet. Set `home` to a **primary** list screen id that should open first. Do not set `home` to a lookup list.
 
-`update_screens` patches an existing screen by `id`. Use it to set `nav`, `related`, `title`, or `columns`. Do not change `type` or `table`.
+`update_screens` patches an existing screen by `id`. Use it to set `nav`, `related`, `title`, `columns`, `scopes`, `groups`, or `empty`. Do not change `type` or `table`.
+
+`update_tables` patches an existing table by `name`. Use it to set `role` to `primary` or `lookup`. Do not rename the table.
 
 ## add_tables
 
@@ -44,6 +47,7 @@ Each item:
 {
   "name": "books",
   "label": "Books",
+  "role": "primary",
   "columns": [
     {
       "name": "title",
@@ -56,6 +60,8 @@ Each item:
 }
 
 Table `name` is snake_case: start with a letter, then letters, digits, underscore.
+
+`role` is optional. Use `"primary"` (default) for the main nouns the user cares about. Use `"lookup"` for catalogs that exist mainly so other forms can pick them (ingredients, tags, authors, units). Lookup lists appear under Lookups in the navbar, not as top-level tabs. Leave lookup list `nav` true (default) so they stay reachable under Lookups. Global search skips lookup tables. `app.home` must be a primary list.
 
 Do not include `id`, `created_at`, or `updated_at`. The host adds them.
 
@@ -196,6 +202,17 @@ Or group form fields: `{ "id": "books_form", "groups": [{ "id": "basics", "label
 
 Or set a list empty message: `{ "id": "books_list", "empty": "No books yet. Add one." }`
 
+## update_tables
+
+Patch an existing table. Example, mark a catalog as a lookup:
+
+{
+  "name": "ingredients",
+  "role": "lookup"
+}
+
+Only `name` and `role` are allowed. Do not rename tables here.
+
 ## extend_enums
 
 Each item adds strings to an existing `select` column:
@@ -266,7 +283,8 @@ Examples:
 
 - “Contacts with name, email, and notes” → one table `contacts`, list and form screens.
 - “Also track follow-ups” when `contacts` exists → table `follow_ups` with `contact_id` fk, list and form, and `related` on the contacts form.
-- “Recipes with ingredients and quantities” → `recipes`, `ingredients`, join `recipe_ingredients` with quantity. Recipes form has `related`. Ingredients stay in the nav. Join list has `"nav": false`.
+- “Recipes with ingredients and quantities” → `recipes` (primary), `ingredients` with `"role": "lookup"`, join `recipe_ingredients` with quantity. Recipes form has `related`. Ingredients appear under Lookups. Join list has `"nav": false`. `app.home` is `recipes_list`.
+- “Also track tags on books” → `tags` with `"role": "lookup"`, plus a join or fk as the intent requires.
 - “Add a phone number” when `contacts` exists → `add_columns` only.
 - “Call it a Rolodex” → `app.title` and `update_labels`, no new tables if the model already fits.
 - If the join table already exists but the parent form has no `related`, use `update_screens`.

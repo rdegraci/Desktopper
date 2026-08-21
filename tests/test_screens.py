@@ -525,6 +525,149 @@ class ScreenLanguageTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.error_code, "bad_name")
 
+    def test_lookup_role_and_update_tables(self) -> None:
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Recipes with lookup ingredients.",
+                "app": {"title": "Wok", "home": "recipes_list"},
+                "add_tables": [
+                    {
+                        "name": "recipes",
+                        "label": "Recipes",
+                        "role": "primary",
+                        "columns": [
+                            {
+                                "name": "title",
+                                "type": "TEXT",
+                                "label": "Title",
+                                "nullable": False,
+                                "widget": "text",
+                            }
+                        ],
+                    },
+                    {
+                        "name": "ingredients",
+                        "label": "Ingredients",
+                        "role": "lookup",
+                        "columns": [
+                            {
+                                "name": "name",
+                                "type": "TEXT",
+                                "label": "Name",
+                                "nullable": False,
+                                "widget": "text",
+                            }
+                        ],
+                    },
+                ],
+                "add_screens": [
+                    {
+                        "id": "recipes_list",
+                        "type": "list",
+                        "table": "recipes",
+                        "title": "Recipes",
+                        "columns": ["title"],
+                    },
+                    {
+                        "id": "recipes_form",
+                        "type": "form",
+                        "table": "recipes",
+                        "title": "Recipe",
+                    },
+                    {
+                        "id": "ingredients_list",
+                        "type": "list",
+                        "table": "ingredients",
+                        "title": "Ingredients",
+                        "columns": ["name"],
+                    },
+                    {
+                        "id": "ingredients_form",
+                        "type": "form",
+                        "table": "ingredients",
+                        "title": "Ingredient",
+                    },
+                ],
+            },
+        )
+        schema = read_or_create_schema(self.appdir)
+        self.assertEqual(schema["tables"]["ingredients"]["role"], "lookup")
+        self.assertEqual(schema["tables"]["recipes"]["role"], "primary")
+        client = create_app().test_client()
+        client.post(
+            "/api/tables/ingredients",
+            json={"name": "Soy"},
+        )
+        client.post(
+            "/api/tables/recipes",
+            json={"title": "Rice"},
+        )
+        hits = client.get("/api/search?q=Soy").get_json()["hits"]
+        self.assertEqual(hits, [])
+        hits = client.get("/api/search?q=Rice").get_json()["hits"]
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["table"], "recipes")
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Promote ingredients.",
+                "update_tables": [{"name": "ingredients", "role": "primary"}],
+            },
+        )
+        schema = read_or_create_schema(self.appdir)
+        self.assertEqual(schema["tables"]["ingredients"]["role"], "primary")
+        hits = client.get("/api/search?q=Soy").get_json()["hits"]
+        self.assertEqual(len(hits), 1)
+
+    def test_home_rejects_lookup_list(self) -> None:
+        with self.assertRaises(ValidationError) as ctx:
+            apply_diff(
+                self.cfg,
+                {
+                    "summary": "Bad home on lookup.",
+                    "app": {"home": "ingredients_list"},
+                    "add_tables": [
+                        {
+                            "name": "ingredients",
+                            "label": "Ingredients",
+                            "role": "lookup",
+                            "columns": [
+                                {
+                                    "name": "name",
+                                    "type": "TEXT",
+                                    "label": "Name",
+                                    "nullable": False,
+                                    "widget": "text",
+                                }
+                            ],
+                        }
+                    ],
+                    "add_screens": [
+                        {
+                            "id": "ingredients_list",
+                            "type": "list",
+                            "table": "ingredients",
+                            "title": "Ingredients",
+                            "columns": ["name"],
+                        }
+                    ],
+                },
+            )
+        self.assertEqual(ctx.exception.error_code, "bad_name")
+
+    def test_update_tables_cannot_break_home(self) -> None:
+        apply_diff(self.cfg, RECIPES)
+        with self.assertRaises(ValidationError) as ctx:
+            apply_diff(
+                self.cfg,
+                {
+                    "summary": "Demote home table.",
+                    "update_tables": [{"name": "recipes", "role": "lookup"}],
+                },
+            )
+        self.assertEqual(ctx.exception.error_code, "bad_name")
+
 
 if __name__ == "__main__":
     unittest.main()

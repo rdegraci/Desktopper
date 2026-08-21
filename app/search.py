@@ -16,7 +16,7 @@ from app.crud import (
     _tables,
 )
 from app.log import emit
-from app.schema_validate import NAME_RE, SYSTEM_COLUMNS
+from app.schema_validate import NAME_RE, SYSTEM_COLUMNS, table_role
 
 MAX_Q = 200
 
@@ -225,6 +225,8 @@ def global_search(
             if tname not in tables:
                 continue
             table = tables[tname]
+            if table_role(table) == "lookup":
+                continue
             extra, params = _where_for_tokens(schema, tname, table, tokens)
             label_col = "id"
             cols = screen.get("columns") or []

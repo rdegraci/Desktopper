@@ -126,10 +126,19 @@ def _merge_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, Any
             "hidden": bool(item.get("hidden", False)),
             "columns": cols,
         }
+        if item.get("role") in ("primary", "lookup"):
+            out["tables"][item["name"]]["role"] = item["role"]
 
     for item in diff.get("add_columns") or []:
         table = out["tables"][item["table"]]
         table.setdefault("columns", []).append(copy.deepcopy(item["column"]))
+
+    for item in diff.get("update_tables") or []:
+        table = out["tables"].get(item["name"])
+        if not table:
+            continue
+        if "role" in item:
+            table["role"] = item["role"]
 
     for item in diff.get("add_screens") or []:
         out["screens"].append(copy.deepcopy(item))

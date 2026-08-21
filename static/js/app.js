@@ -62,6 +62,14 @@
     });
   }
 
+  function tableRole(name) {
+    var table = tableDef(name);
+    if (table && table.role === "lookup") {
+      return "lookup";
+    }
+    return "primary";
+  }
+
   function listScreens() {
     var screens = (schema && schema.screens) || [];
     return screens.filter(function (s) {
@@ -71,7 +79,13 @@
 
   function navListScreens() {
     return listScreens().filter(function (s) {
-      return s.nav !== false;
+      return s.nav !== false && tableRole(s.table) !== "lookup";
+    });
+  }
+
+  function lookupNavScreens() {
+    return listScreens().filter(function (s) {
+      return s.nav !== false && tableRole(s.table) === "lookup";
     });
   }
 
@@ -164,6 +178,32 @@
       });
       nav.appendChild(a);
     });
+    var lookups = lookupNavScreens();
+    if (lookups.length) {
+      var drop = el("div", { className: "dropdown" });
+      var toggle = el("a", {
+        className: "nav-link dropdown-toggle",
+        href: "#",
+        text: "Lookups",
+        role: "button",
+      });
+      toggle.setAttribute("data-bs-toggle", "dropdown");
+      toggle.setAttribute("aria-expanded", "false");
+      drop.appendChild(toggle);
+      var menu = el("ul", { className: "dropdown-menu" });
+      lookups.forEach(function (screen) {
+        var li = document.createElement("li");
+        var a = el("a", {
+          className: "dropdown-item",
+          href: "#list/" + screen.table,
+          text: screen.title || screen.table,
+        });
+        li.appendChild(a);
+        menu.appendChild(li);
+      });
+      drop.appendChild(menu);
+      nav.appendChild(drop);
+    }
   }
 
   function drawEmpty(show) {
