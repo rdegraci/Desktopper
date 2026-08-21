@@ -319,6 +319,41 @@
     tbl.appendChild(tbody);
     wrap.appendChild(tbl);
     main.appendChild(wrap);
+    var emptyBox = el("p", {
+      className: "text-muted empty-state mb-0",
+      hidden: "hidden",
+    });
+    main.appendChild(emptyBox);
+
+    function listEmptyMessage(q, rowCount) {
+      if (rowCount) {
+        return "";
+      }
+      if (q) {
+        return "No matches.";
+      }
+      if (scopeDef) {
+        return (
+          "Nothing in " + (scopeDef.label || scopeDef.id || "this filter") + "."
+        );
+      }
+      if (screen.empty) {
+        return screen.empty;
+      }
+      return "No " + (screen.title || tableName) + " yet.";
+    }
+
+    function showListEmpty(msg) {
+      if (msg) {
+        emptyBox.textContent = msg;
+        emptyBox.hidden = false;
+        wrap.hidden = true;
+      } else {
+        emptyBox.textContent = "";
+        emptyBox.hidden = true;
+        wrap.hidden = false;
+      }
+    }
 
     function load(q) {
       var params = [];
@@ -343,7 +378,9 @@
       api(path)
         .then(function (rows) {
           tbody.textContent = "";
-          (rows || []).forEach(function (row) {
+          rows = rows || [];
+          showListEmpty(listEmptyMessage(q, rows.length));
+          rows.forEach(function (row) {
             var tr = document.createElement("tr");
             colNames.forEach(function (cname) {
               var td = document.createElement("td");
@@ -622,7 +659,31 @@
       var tbody = document.createElement("tbody");
       tbl.appendChild(tbody);
       section.appendChild(tbl);
+      var emptyBox = el("p", {
+        className: "text-muted empty-state mb-0",
+        hidden: "hidden",
+      });
+      section.appendChild(emptyBox);
       container.appendChild(section);
+
+      function relatedEmptyMessage() {
+        if (rel.empty) {
+          return rel.empty;
+        }
+        return "No " + (rel.title || rel.table) + " yet. Add one.";
+      }
+
+      function showRelatedEmpty(isEmpty) {
+        if (isEmpty) {
+          emptyBox.textContent = relatedEmptyMessage();
+          emptyBox.hidden = false;
+          tbl.hidden = true;
+        } else {
+          emptyBox.textContent = "";
+          emptyBox.hidden = true;
+          tbl.hidden = false;
+        }
+      }
 
       var fkNames = {};
       fieldCols.forEach(function (c) {
@@ -656,7 +717,9 @@
             encodeURIComponent(String(parentId))
         ).then(function (rows) {
           tbody.textContent = "";
-          (rows || []).forEach(function (row) {
+          rows = rows || [];
+          showRelatedEmpty(!rows.length);
+          rows.forEach(function (row) {
             var tr = document.createElement("tr");
             colNames.forEach(function (cname) {
               var td = document.createElement("td");

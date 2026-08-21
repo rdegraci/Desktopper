@@ -151,6 +151,8 @@ def _merge_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, Any
                 screen["scopes"] = copy.deepcopy(item["scopes"])
             if "groups" in item:
                 screen["groups"] = copy.deepcopy(item["groups"])
+            if "empty" in item:
+                screen["empty"] = item["empty"]
             break
 
     for item in diff.get("extend_enums") or []:

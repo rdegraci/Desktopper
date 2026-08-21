@@ -10,6 +10,7 @@ class SystemPromptTests(unittest.TestCase):
         self.assertEqual(text, SYSTEM_PROMPT)
         self.assertIn("schema editor", text)
         self.assertIn("add_tables", text)
+        self.assertIn('"empty"', text)
         self.assertNotIn("docs/cache", text)
 
     def test_llm_and_intent_do_not_read_cache(self) -> None:

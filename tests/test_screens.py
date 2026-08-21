@@ -432,6 +432,99 @@ class ScreenLanguageTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.error_code, "bad_name")
 
+    def test_list_and_related_empty(self) -> None:
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Recipes with empty copy.",
+                "add_tables": RECIPES["add_tables"],
+                "add_screens": [
+                    {
+                        "id": "recipes_list",
+                        "type": "list",
+                        "table": "recipes",
+                        "title": "Recipes",
+                        "columns": ["title"],
+                        "empty": "No recipes yet. Add one.",
+                    },
+                    {
+                        "id": "recipes_form",
+                        "type": "form",
+                        "table": "recipes",
+                        "title": "Recipe",
+                        "related": [
+                            {
+                                "table": "recipe_ingredients",
+                                "fk": "recipe_id",
+                                "title": "Ingredients",
+                                "columns": ["ingredient_id", "quantity"],
+                                "empty": "No ingredients yet. Add one.",
+                            }
+                        ],
+                    },
+                    {
+                        "id": "ingredients_list",
+                        "type": "list",
+                        "table": "ingredients",
+                        "title": "Ingredients",
+                        "columns": ["name"],
+                    },
+                    {
+                        "id": "ingredients_form",
+                        "type": "form",
+                        "table": "ingredients",
+                        "title": "Ingredient",
+                    },
+                    {
+                        "id": "recipe_ingredients_list",
+                        "type": "list",
+                        "table": "recipe_ingredients",
+                        "title": "Recipe lines",
+                        "columns": ["quantity"],
+                        "nav": False,
+                    },
+                    {
+                        "id": "recipe_ingredients_form",
+                        "type": "form",
+                        "table": "recipe_ingredients",
+                        "title": "Recipe line",
+                    },
+                ],
+                "app": {"home": "recipes_list"},
+            },
+        )
+        schema = read_or_create_schema(self.appdir)
+        lst = [s for s in schema["screens"] if s["id"] == "recipes_list"][0]
+        form = [s for s in schema["screens"] if s["id"] == "recipes_form"][0]
+        self.assertEqual(lst["empty"], "No recipes yet. Add one.")
+        self.assertEqual(form["related"][0]["empty"], "No ingredients yet. Add one.")
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Patch empty copy.",
+                "update_screens": [
+                    {"id": "recipes_list", "empty": "Your recipe box is empty."}
+                ],
+            },
+        )
+        schema = read_or_create_schema(self.appdir)
+        lst = [s for s in schema["screens"] if s["id"] == "recipes_list"][0]
+        self.assertEqual(lst["empty"], "Your recipe box is empty.")
+
+    def test_empty_rejected_on_form(self) -> None:
+        apply_diff(self.cfg, RECIPES)
+        with self.assertRaises(ValidationError) as ctx:
+            apply_diff(
+                self.cfg,
+                {
+                    "summary": "Bad empty.",
+                    "update_screens": [
+                        {"id": "recipes_form", "empty": "No form."}
+                    ],
+                },
+            )
+        self.assertEqual(ctx.exception.error_code, "bad_name")
+
 
 if __name__ == "__main__":
     unittest.main()

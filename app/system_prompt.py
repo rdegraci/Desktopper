@@ -112,6 +112,7 @@ List:
   "title": "Books",
   "columns": ["title", "status"],
   "nav": true,
+  "empty": "No books yet. Add one.",
   "scopes": [
     { "id": "open", "label": "Open", "column": "status", "value": "open" },
     { "id": "done", "label": "Done", "column": "status", "value": "done" }
@@ -142,7 +143,8 @@ Form:
       "table": "book_authors",
       "fk": "book_id",
       "title": "Authors",
-      "columns": ["author_id", "role"]
+      "columns": ["author_id", "role"],
+      "empty": "No authors yet. Add one."
     }
   ]
 }
@@ -156,6 +158,8 @@ Screen `id` is snake_case and unique across the current schema and this diff.
 `scopes` is only allowed on list screens. Each item is a named filter button. `id` is snake_case. `label` is shown in the UI. Optional `column` + `value` filter rows by equality. Omit `column` only when the scope means “all rows” (usually unnecessary; the host always offers All). Prefer a `select` column for status-style scopes. Do not create a new table for Open/Closed.
 
 `groups` is only allowed on form screens. Each item is a labeled section of fields. `id` is snake_case. `label` is the section heading. `columns` lists field names in display order. A column may appear in at most one group. Columns not listed still appear after the groups. Use groups when a form has more than a few fields.
+
+`empty` is an optional short string. On list screens it is the message when the list has no rows (no search and no scope). On a `related` item it is the message when that child list is empty. Prefer a concrete noun and a next step, for example "No ingredients yet. Add one." If you omit `empty`, the host shows a default.
 
 Every user-facing catalog or primary noun needs one list screen and one form screen.
 
@@ -189,6 +193,8 @@ Or hide a join list: `{ "id": "recipe_ingredients_list", "nav": false }`
 Or add list scopes: `{ "id": "tasks_list", "scopes": [{ "id": "open", "label": "Open", "column": "status", "value": "open" }] }`
 
 Or group form fields: `{ "id": "books_form", "groups": [{ "id": "basics", "label": "Basics", "columns": ["title", "status"] }] }`
+
+Or set a list empty message: `{ "id": "books_list", "empty": "No books yet. Add one." }`
 
 ## extend_enums
 

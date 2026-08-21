@@ -48,6 +48,7 @@ SCREEN_KEYS = {
     "related",
     "scopes",
     "groups",
+    "empty",
 }
 UPDATE_SCREEN_KEYS = {
     "id",
@@ -57,8 +58,9 @@ UPDATE_SCREEN_KEYS = {
     "related",
     "scopes",
     "groups",
+    "empty",
 }
-RELATED_KEYS = {"table", "fk", "title", "columns"}
+RELATED_KEYS = {"table", "fk", "title", "columns", "empty"}
 SCOPE_KEYS = {"id", "label", "column", "value"}
 GROUP_KEYS = {"id", "label", "columns"}
 SCOPE_FILTER_WIDGETS = {"select", "checkbox", "text", "number", "textarea"}
@@ -316,6 +318,11 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             if stype != "form":
                 raise ValidationError("bad_name", "groups is only allowed on form screens.")
             _check_groups(ptables, tname, item.get("groups"))
+        if "empty" in item:
+            if stype != "list":
+                raise ValidationError("bad_name", "empty is only allowed on list screens.")
+            if not isinstance(item.get("empty"), str):
+                raise ValidationError("bad_name", "Screen empty must be a string.")
 
     screen_by_id: dict[str, dict[str, Any]] = {}
     for screen in schema.get("screens") or []:
@@ -348,6 +355,11 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             if current.get("type") != "form":
                 raise ValidationError("bad_name", "groups is only allowed on form screens.")
             _check_groups(ptables, current.get("table"), item.get("groups"))
+        if "empty" in item:
+            if current.get("type") != "list":
+                raise ValidationError("bad_name", "empty is only allowed on list screens.")
+            if not isinstance(item.get("empty"), str):
+                raise ValidationError("bad_name", "Screen empty must be a string.")
         if "title" in item and not isinstance(item.get("title"), str):
             raise ValidationError("bad_name", "Screen title must be a string.")
         if "columns" in item:
@@ -532,6 +544,8 @@ def _check_related(tables: dict[str, Any], form_table: Any, related: Any) -> Non
             raise ValidationError("bad_name", "related fk must point at the form table.")
         if "title" in item and not isinstance(item.get("title"), str):
             raise ValidationError("bad_name", "related title must be a string.")
+        if "empty" in item and not isinstance(item.get("empty"), str):
+            raise ValidationError("bad_name", "related empty must be a string.")
         cols = item.get("columns")
         if cols is None:
             continue
