@@ -24,6 +24,8 @@ class Slice7AppJsTests(unittest.TestCase):
         self.assertIn("data-inline-related", self.src)
         self.assertIn("scope=", self.src)
         self.assertIn("screen.scopes", self.src)
+        self.assertIn("field-group", self.src)
+        self.assertIn("screen.groups", self.src)
         self.assertIn("/api/search", self.src)
         self.assertIn("300", self.src)
         self.assertIn("/api/tables/", self.src)

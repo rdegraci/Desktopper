@@ -341,6 +341,97 @@ class ScreenLanguageTests(unittest.TestCase):
             )
         self.assertEqual(ctx.exception.error_code, "bad_name")
 
+    def test_form_groups(self) -> None:
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Contacts with grouped form.",
+                "add_tables": [
+                    {
+                        "name": "contacts",
+                        "label": "Contacts",
+                        "columns": [
+                            {
+                                "name": "name",
+                                "type": "TEXT",
+                                "label": "Name",
+                                "nullable": False,
+                                "widget": "text",
+                            },
+                            {
+                                "name": "email",
+                                "type": "TEXT",
+                                "label": "Email",
+                                "nullable": True,
+                                "widget": "text",
+                            },
+                            {
+                                "name": "notes",
+                                "type": "TEXT",
+                                "label": "Notes",
+                                "nullable": True,
+                                "widget": "textarea",
+                            },
+                        ],
+                    }
+                ],
+                "add_screens": [
+                    {
+                        "id": "contacts_list",
+                        "type": "list",
+                        "table": "contacts",
+                        "title": "Contacts",
+                        "columns": ["name"],
+                    },
+                    {
+                        "id": "contacts_form",
+                        "type": "form",
+                        "table": "contacts",
+                        "title": "Contact",
+                        "groups": [
+                            {
+                                "id": "basics",
+                                "label": "Basics",
+                                "columns": ["name", "email"],
+                            },
+                            {
+                                "id": "notes",
+                                "label": "Notes",
+                                "columns": ["notes"],
+                            },
+                        ],
+                    },
+                ],
+            },
+        )
+        schema = read_or_create_schema(self.appdir)
+        form = [s for s in schema["screens"] if s["id"] == "contacts_form"][0]
+        self.assertEqual(len(form["groups"]), 2)
+        self.assertEqual(form["groups"][0]["columns"], ["name", "email"])
+
+    def test_groups_rejected_on_list(self) -> None:
+        apply_diff(self.cfg, RECIPES)
+        with self.assertRaises(ValidationError) as ctx:
+            apply_diff(
+                self.cfg,
+                {
+                    "summary": "Bad groups.",
+                    "update_screens": [
+                        {
+                            "id": "recipes_list",
+                            "groups": [
+                                {
+                                    "id": "basics",
+                                    "label": "Basics",
+                                    "columns": ["title"],
+                                }
+                            ],
+                        }
+                    ],
+                },
+            )
+        self.assertEqual(ctx.exception.error_code, "bad_name")
+
 
 if __name__ == "__main__":
     unittest.main()

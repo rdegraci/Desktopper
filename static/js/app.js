@@ -836,25 +836,82 @@
 
     function paint(row, fkMap) {
       form.textContent = "";
-      cols.forEach(function (col) {
-        var group = el("div", { className: "mb-3" });
+      var grouped = {};
+      var groups = (screen && screen.groups) || [];
+      groups.forEach(function (g) {
+        if (!g || !g.id || !g.columns) {
+          return;
+        }
+        (g.columns || []).forEach(function (cname) {
+          grouped[cname] = true;
+        });
+      });
+
+      function appendField(parent, col) {
+        var box = el("div", { className: "mb-3" });
         var label = el("label", {
           className: "form-label",
           text: col.label || col.name,
         });
         label.setAttribute("for", "f-" + col.name);
-        group.appendChild(label);
+        box.appendChild(label);
         var opts = fkMap[col.name];
         var val = row ? row[col.name] : null;
         if (col.widget === "checkbox") {
           var wrap = el("div", { className: "form-check" });
           wrap.appendChild(widgetInput(col, val, opts));
-          group.appendChild(wrap);
+          box.appendChild(wrap);
         } else {
-          group.appendChild(widgetInput(col, val, opts));
+          box.appendChild(widgetInput(col, val, opts));
         }
-        form.appendChild(group);
-      });
+        parent.appendChild(box);
+      }
+
+      function colByName(name) {
+        var i;
+        for (i = 0; i < cols.length; i++) {
+          if (cols[i].name === name) {
+            return cols[i];
+          }
+        }
+        return null;
+      }
+
+      if (groups.length) {
+        groups.forEach(function (g) {
+          if (!g || !g.columns || !g.columns.length) {
+            return;
+          }
+          var section = el("fieldset", { className: "mb-4 field-group" });
+          section.appendChild(
+            el("legend", {
+              className: "h6 field-group-label",
+              text: g.label || g.id,
+            })
+          );
+          var any = false;
+          (g.columns || []).forEach(function (cname) {
+            var col = colByName(cname);
+            if (!col) {
+              return;
+            }
+            any = true;
+            appendField(section, col);
+          });
+          if (any) {
+            form.appendChild(section);
+          }
+        });
+        cols.forEach(function (col) {
+          if (!grouped[col.name]) {
+            appendField(form, col);
+          }
+        });
+      } else {
+        cols.forEach(function (col) {
+          appendField(form, col);
+        });
+      }
       var actions = el("div", { className: "d-flex gap-2" });
       var save = el("button", { className: "btn btn-primary", type: "submit", text: "Save" });
       actions.appendChild(save);

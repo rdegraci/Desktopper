@@ -125,6 +125,18 @@ Form:
   "type": "form",
   "table": "books",
   "title": "Book",
+  "groups": [
+    {
+      "id": "basics",
+      "label": "Basics",
+      "columns": ["title", "status"]
+    },
+    {
+      "id": "notes",
+      "label": "Notes",
+      "columns": ["notes"]
+    }
+  ],
   "related": [
     {
       "table": "book_authors",
@@ -142,6 +154,8 @@ Screen `id` is snake_case and unique across the current schema and this diff.
 `related` is only allowed on form screens. Each item is a child list on that form. `table` is the child table. `fk` is an fk column on the child that points at the form table. The host filters child rows by the parent id and hides that fk on add/edit.
 
 `scopes` is only allowed on list screens. Each item is a named filter button. `id` is snake_case. `label` is shown in the UI. Optional `column` + `value` filter rows by equality. Omit `column` only when the scope means “all rows” (usually unnecessary; the host always offers All). Prefer a `select` column for status-style scopes. Do not create a new table for Open/Closed.
+
+`groups` is only allowed on form screens. Each item is a labeled section of fields. `id` is snake_case. `label` is the section heading. `columns` lists field names in display order. A column may appear in at most one group. Columns not listed still appear after the groups. Use groups when a form has more than a few fields.
 
 Every user-facing catalog or primary noun needs one list screen and one form screen.
 
@@ -173,6 +187,8 @@ Patch an existing screen. Example, attach children to a form that already exists
 Or hide a join list: `{ "id": "recipe_ingredients_list", "nav": false }`
 
 Or add list scopes: `{ "id": "tasks_list", "scopes": [{ "id": "open", "label": "Open", "column": "status", "value": "open" }] }`
+
+Or group form fields: `{ "id": "books_form", "groups": [{ "id": "basics", "label": "Basics", "columns": ["title", "status"] }] }`
 
 ## extend_enums
 
@@ -249,6 +265,7 @@ Examples:
 - “Call it a Rolodex” → `app.title` and `update_labels`, no new tables if the model already fits.
 - If the join table already exists but the parent form has no `related`, use `update_screens`.
 - “Show open and done tasks” when `status` exists → list `scopes`, not a new table.
+- “Organize the book form into basics and notes” → form `groups`, not new tables.
 
 If the user asks to delete data or wipe a table, do not emit destructive keys. Return `add_tables` empty and a `summary` that says the host cannot delete tables. Change nothing else.
 

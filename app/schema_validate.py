@@ -38,10 +38,29 @@ COLUMN_KEYS = {
 }
 TABLE_KEYS = {"name", "label", "hidden", "columns"}
 APP_KEYS = {"title", "prompt", "home"}
-SCREEN_KEYS = {"id", "type", "table", "title", "columns", "nav", "related", "scopes"}
-UPDATE_SCREEN_KEYS = {"id", "title", "columns", "nav", "related", "scopes"}
+SCREEN_KEYS = {
+    "id",
+    "type",
+    "table",
+    "title",
+    "columns",
+    "nav",
+    "related",
+    "scopes",
+    "groups",
+}
+UPDATE_SCREEN_KEYS = {
+    "id",
+    "title",
+    "columns",
+    "nav",
+    "related",
+    "scopes",
+    "groups",
+}
 RELATED_KEYS = {"table", "fk", "title", "columns"}
 SCOPE_KEYS = {"id", "label", "column", "value"}
+GROUP_KEYS = {"id", "label", "columns"}
 SCOPE_FILTER_WIDGETS = {"select", "checkbox", "text", "number", "textarea"}
 
 
@@ -293,6 +312,10 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             if stype != "list":
                 raise ValidationError("bad_name", "scopes is only allowed on list screens.")
             _check_scopes(ptables, tname, item.get("scopes"))
+        if "groups" in item:
+            if stype != "form":
+                raise ValidationError("bad_name", "groups is only allowed on form screens.")
+            _check_groups(ptables, tname, item.get("groups"))
 
     screen_by_id: dict[str, dict[str, Any]] = {}
     for screen in schema.get("screens") or []:
@@ -321,6 +344,10 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             if current.get("type") != "list":
                 raise ValidationError("bad_name", "scopes is only allowed on list screens.")
             _check_scopes(ptables, current.get("table"), item.get("scopes"))
+        if "groups" in item:
+            if current.get("type") != "form":
+                raise ValidationError("bad_name", "groups is only allowed on form screens.")
+            _check_groups(ptables, current.get("table"), item.get("groups"))
         if "title" in item and not isinstance(item.get("title"), str):
             raise ValidationError("bad_name", "Screen title must be a string.")
         if "columns" in item:
@@ -389,6 +416,44 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             raise ValidationError("bad_name", "Cannot hide id.")
         if not _is_name(cname) or cname not in _column_map(ptables[tname]):
             raise ValidationError("bad_name", "hide_columns column is missing.")
+
+
+def _check_groups(tables: dict[str, Any], form_table: Any, groups: Any) -> None:
+    if not isinstance(groups, list):
+        raise ValidationError("bad_name", "groups must be an array.")
+    if not _is_name(form_table) or form_table not in tables:
+        raise ValidationError("bad_name", "groups form table is missing.")
+    cmap = _column_map(tables[form_table])
+    seen_ids: set[str] = set()
+    seen_cols: set[str] = set()
+    for item in groups:
+        if not isinstance(item, dict):
+            raise ValidationError("bad_name", "groups items must be objects.")
+        extra = set(item.keys()) - GROUP_KEYS
+        if extra:
+            raise ValidationError("unknown_key", "groups item has unknown keys.")
+        gid = item.get("id")
+        if not _is_name(gid):
+            raise ValidationError("bad_name", "Group id is not snake_case.")
+        if gid in seen_ids:
+            raise ValidationError("bad_name", f"Group id {gid} is not unique.")
+        seen_ids.add(gid)
+        label = item.get("label")
+        if not isinstance(label, str) or not label.strip():
+            raise ValidationError("bad_name", "Group label is required.")
+        columns = item.get("columns")
+        if not isinstance(columns, list) or not columns:
+            raise ValidationError("bad_name", "Group columns must be a non-empty array.")
+        if not all(isinstance(c, str) for c in columns):
+            raise ValidationError("bad_name", "Group columns must be names.")
+        for cname in columns:
+            if cname in SYSTEM_COLUMNS:
+                raise ValidationError("bad_name", f"Group must not include {cname}.")
+            if cname not in cmap:
+                raise ValidationError("bad_name", f"Group column {cname} is missing.")
+            if cname in seen_cols:
+                raise ValidationError("bad_name", f"Column {cname} is in two groups.")
+            seen_cols.add(cname)
 
 
 def _check_scopes(tables: dict[str, Any], list_table: Any, scopes: Any) -> None:
