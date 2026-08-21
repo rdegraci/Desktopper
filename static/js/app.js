@@ -423,6 +423,88 @@
     return "#list/" + tableName;
   }
 
+  function belongsToEntries(table, query) {
+    var entries = [];
+    var key;
+    query = query || {};
+    for (key in query) {
+      if (!Object.prototype.hasOwnProperty.call(query, key)) {
+        continue;
+      }
+      var col = ((table && table.columns) || []).filter(function (c) {
+        return c.name === key && c.widget === "fk" && c.fk && c.fk.table;
+      })[0];
+      if (!col) {
+        continue;
+      }
+      var id = Number(query[key]);
+      if (!id) {
+        continue;
+      }
+      entries.push({ col: col, id: id });
+    }
+    return entries;
+  }
+
+  function drawBelongsTo(box, table, query) {
+    if (!box) {
+      return Promise.resolve();
+    }
+    box.textContent = "";
+    var entries = belongsToEntries(table, query);
+    if (!entries.length) {
+      box.hidden = true;
+      return Promise.resolve();
+    }
+    box.hidden = false;
+    return Promise.all(
+      entries.map(function (entry) {
+        var target = entry.col.fk.table;
+        var display = entry.col.fk.display;
+        return api(
+          "/api/tables/" + encodeURIComponent(target) + "/" + entry.id
+        ).then(
+          function (parent) {
+            var label =
+              parent && parent[display] != null
+                ? parent[display]
+                : String(entry.id);
+            var row = el("p", { className: "mb-1 belongs-to" });
+            row.appendChild(
+              document.createTextNode((entry.col.label || entry.col.name) + ": ")
+            );
+            var link = el("a", {
+              className: "belongs-to-link",
+              href: "#form/" + target + "/" + entry.id,
+              text: String(label),
+            });
+            row.appendChild(link);
+            return row;
+          },
+          function () {
+            var row = el("p", { className: "mb-1 belongs-to" });
+            row.appendChild(
+              document.createTextNode((entry.col.label || entry.col.name) + ": ")
+            );
+            var link = el("a", {
+              className: "belongs-to-link",
+              href: "#form/" + target + "/" + entry.id,
+              text: String(entry.id),
+            });
+            row.appendChild(link);
+            return row;
+          }
+        );
+      })
+    ).then(function (nodes) {
+      nodes.forEach(function (node) {
+        if (node) {
+          box.appendChild(node);
+        }
+      });
+    });
+  }
+
   function relatedFieldCols(childTable, rel) {
     return visibleColumns(childTable).filter(function (c) {
       return c.name !== rel.fk;
@@ -678,6 +760,8 @@
     main.appendChild(
       el("h1", { className: "h4 mb-3", text: rowId ? "Edit " + title : "New " + title })
     );
+    var belongsBox = el("div", { className: "belongs-to-box mb-3" });
+    main.appendChild(belongsBox);
     var form = el("form", { id: "record-form" });
     var related = (screen && screen.related) || [];
     var after = parentReturn(tableName, query);
@@ -788,8 +872,9 @@
       }
     }
 
-    Promise.all(fkLoads)
-      .then(function (pairs) {
+    Promise.all([drawBelongsTo(belongsBox, table, query), Promise.all(fkLoads)])
+      .then(function (results) {
+        var pairs = results[1] || [];
         var fkMap = {};
         pairs.forEach(function (p) {
           fkMap[p.name] = p.options;

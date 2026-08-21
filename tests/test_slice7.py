@@ -36,6 +36,12 @@ class Slice7AppJsTests(unittest.TestCase):
             self.src,
         )
 
+    def test_belongs_to_parent_link(self) -> None:
+        self.assertIn("belongs-to-link", self.src)
+        self.assertIn("belongs-to-box", self.src)
+        self.assertIn("drawBelongsTo", self.src)
+        self.assertIn("belongsToEntries", self.src)
+
     def test_ops_is_html_link(self) -> None:
         self.assertIn('href="/ops"', self.html)
         self.assertIn('target="_blank"', self.html)
