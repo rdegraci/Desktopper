@@ -3,6 +3,9 @@
   var versionEl = document.getElementById("schema-version");
   var formEl = document.getElementById("intent-form");
   var textEl = document.getElementById("intent-text");
+  var submitEl = document.getElementById("intent-submit");
+  var busyEl = document.getElementById("intent-busy");
+  var busyLabelEl = document.getElementById("intent-busy-label");
   var summaryEl = document.getElementById("intent-summary");
   var hintEl = document.getElementById("intent-hint");
   var errorEl = document.getElementById("intent-error");
@@ -33,6 +36,27 @@
       return;
     }
     versionEl.textContent = "Schema version " + String(version);
+  }
+
+  function setBusy(busy) {
+    if (busyEl) {
+      if (busy) {
+        busyEl.classList.remove("d-none");
+        busyEl.classList.add("d-flex");
+      } else {
+        busyEl.classList.remove("d-flex");
+        busyEl.classList.add("d-none");
+      }
+    }
+    if (busyLabelEl) {
+      busyLabelEl.textContent = busy ? "Working…" : "";
+    }
+    if (submitEl) {
+      submitEl.disabled = !!busy;
+    }
+    if (textEl) {
+      textEl.disabled = !!busy;
+    }
   }
 
   fetch("/api/schema")
@@ -83,6 +107,7 @@
         hintEl.hidden = true;
       }
       var text = textEl ? textEl.value : "";
+      setBusy(true);
       fetch("/api/intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -118,6 +143,9 @@
         .catch(function () {
           loadLogs();
           showError("Intent request failed.");
+        })
+        .then(function () {
+          setBusy(false);
         });
     });
   }

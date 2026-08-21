@@ -176,6 +176,10 @@ class Slice8OpsJsTests(unittest.TestCase):
         self.assertIn('href="/"', self.html)
         self.assertIn("schema-version", self.html)
         self.assertIn("intent-text", self.html)
+        self.assertIn("intent-busy", self.html)
+        self.assertIn("spinner-border", self.html)
+        self.assertIn("d-none", self.html)
+        self.assertIn("setBusy", self.src)
 
 
 if __name__ == "__main__":

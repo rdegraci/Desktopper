@@ -23,9 +23,20 @@
           rows="6"
           required
         ></textarea>
-        <button type="submit" class="btn btn-primary mt-3" id="intent-submit">
-          Submit
-        </button>
+        <div class="d-flex align-items-center gap-3 mt-3">
+          <button type="submit" class="btn btn-primary" id="intent-submit">
+            Submit
+          </button>
+          <div
+            id="intent-busy"
+            class="align-items-center gap-2 d-none"
+            role="status"
+            aria-live="polite"
+          >
+            <div class="spinner-border spinner-border-sm" aria-hidden="true"></div>
+            <span id="intent-busy-label">Working…</span>
+          </div>
+        </div>
       </form>
       <p class="mt-3" id="intent-summary"></p>
       <p class="text-muted" id="intent-hint" hidden>
