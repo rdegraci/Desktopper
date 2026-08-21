@@ -1,6 +1,6 @@
 # Desktopper
 
-A local Python app for macOS. You describe an information model in ordinary language. An LLM proposes an additive SQLite schema. Safari shows list and form screens from that schema.
+A local Python app for macOS. You describe an information model in ordinary language. An LLM returns an additive schema diff. Python applies the diff to SQLite. Safari shows list and form screens from that schema.
 
 The model does not write HTML, JavaScript, or SQL. Flask serves a frozen shell. Data and secrets live under Application Support.
 
@@ -8,16 +8,16 @@ There is no Node.js runtime and no npm.
 
 ## Status
 
-The MVP is under construction. Slice 1 is in the tree: Flask, appdir config, JSON logs, home page, and Ops page.
+The MVP works end to end: schema engine, CRUD, search, Ops intent chat, and the first screen language.
 
-Later slices add a one-time Bootstrap download, the schema engine, CRUD, search, the home renderer, and Ops chat with the LLM.
+Screen language covers related child lists, belongs-to parent links, list scopes, form field groups, empty states, and primary vs lookup tables.
 
 ## Requirements
 
 - macOS
 - Python 3.11 or newer
 - Safari (open `http://127.0.0.1`, not a `file://` page)
-- An OpenAI-compatible LLM endpoint when you reach the intent slice (local Ollama is valid)
+- An LLM key for xAI Grok, or a local OpenAI-compatible endpoint such as Ollama
 
 ## Install
 
@@ -27,7 +27,7 @@ Later slices add a one-time Bootstrap download, the schema engine, CRUD, search,
 4. Install Python packages: `pip install -r requirements.txt`
 5. Fetch Bootstrap once: `python3 tools/fetch_bootstrap.py`
 
-Step 5 lands in a later slice. Until that script exists, `python3 -m app.server` prints a message and exits if `static/css/bootstrap.min.css` is missing.
+If `static/css/bootstrap.min.css` is missing, `python3 -m app.server` prints a message and exits.
 
 ## Run
 
@@ -42,7 +42,7 @@ On first start the process creates:
 
 It copies `.env.example` to `.env` and `config.yaml.example` to `conf.yaml` only if those files are absent. It does not overwrite files that already exist.
 
-Tests must set `DESKTOPPER_APPDIR` to a temporary directory.
+Override the appdir with `DESKTOPPER_APPDIR`. Tests must set that variable to a temporary directory.
 
 ## Config
 
@@ -55,36 +55,71 @@ Do not put the API key in YAML. Do not commit live `.env` or `conf.yaml`. The se
 
 Edit knobs in Application Support, then restart the process.
 
-Named LLM providers live under `llm.provider` in `conf.yaml`. `xai` uses `https://api.x.ai/v1` and defaults to `grok-4.6`. `openai_compatible` uses the URL you set (local Ollama is valid). Put the key in `.env` only.
+Named LLM providers live under `llm.provider` in `conf.yaml`.
+
+- `xai` uses `https://api.x.ai/v1` and defaults to `grok-4.6`.
+- `openai_compatible` uses the URL you set. Local Ollama is valid.
+
+Put the key in `.env` only.
 
 ## Use
 
-Home (`/`) is the generated app: lists, forms, and search. It has no chat box.
+Home (`/`) is the generated app: lists, forms, related child lists, and search. It has no chat box.
 
-Until Ops chat exists, you can plant a demo schema:
+Ops (`/ops`) is where you describe changes. The LLM returns a JSON schema diff. The host validates and applies it. After a successful change, refresh the App tab. Home does not live-update.
+
+The navbar **Ops** link uses `href="/ops"` and `target="_blank"`. You must click it. The app does not open Ops by itself and does not redirect `/` to `/ops`.
+
+Hash routes: `#list/contacts` and `#form/contacts/1`.
+
+### Screen language
+
+| Feature | Meaning |
+| --- | --- |
+| Related | Child rows on a parent form, with inline add |
+| Belongs-to | Bound parent fk shown as a link back to the parent |
+| Scopes | Named list filters such as All / Open / Done |
+| Groups | Labeled field sections on long forms |
+| Empty | Optional copy when a list or related block has no rows |
+| Lookup vs primary | Catalogs use `"role": "lookup"` and appear under Lookups. Global search skips them. `app.home` must be a primary list. Join lists use `"nav": false`. |
+
+Optional seed without Ops:
 
 1. Start the server.
 2. Run `python3 tools/seed_schema.py`
 3. Refresh Safari.
 
-Hash routes: `#list/contacts` and `#form/contacts/1`.
+### Reset local data
 
-The navbar **Ops** link uses `href="/ops"` and `target="_blank"`. You must click it. The app does not open Ops by itself and does not redirect `/` to `/ops`.
+To wipe schema and rows but keep secrets and knobs, stop the server and delete these under the appdir:
 
-Ops (`/ops`) is where you talk to the LLM (when that slice is present). After a successful schema change, refresh the home tab. Home does not live-update.
+- `app.sqlite` (and `app.sqlite-wal` / `app.sqlite-shm` if present)
+- `schema.json`
+- `schema.json.bak`
+- `migrations/`
+
+Keep `.env` and `conf.yaml`. You may also delete `desktopper.jsonl` if you want a clean log.
 
 ## Tests
 
+Prefer the project virtualenv:
+
 ```
-python3 -m unittest tests.test_slice1 -v
+.venv/bin/python -m unittest discover -s tests -v
+```
+
+Useful focused runs:
+
+```
+.venv/bin/python -m unittest tests.test_screens tests.test_slice7 tests.test_slice8 -v
 ```
 
 ## Layout
 
 ```
-app/           Python (config, log, Flask)
+app/           Python (config, engine, intent, LLM, CRUD, search, Flask)
 static/        Frozen HTML, CSS, JS
-tools/         One-time vendor fetch
+tools/         Bootstrap fetch and optional seed
 tests/
 .env.example
 config.yaml.example
