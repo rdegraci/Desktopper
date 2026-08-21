@@ -228,12 +228,13 @@
     });
   }
 
-  function drawList(tableName) {
+  function drawList(tableName, query) {
     var main = document.getElementById("main");
     var table = tableDef(tableName);
     var screen = listScreens().filter(function (s) {
       return s.table === tableName;
     })[0];
+    query = query || {};
     if (!main || !table || !screen) {
       drawEmpty(true);
       return;
@@ -248,6 +249,44 @@
     });
     header.appendChild(neu);
     main.appendChild(header);
+
+    var scopes = screen.scopes || [];
+    var activeScope = query.scope || "";
+    var scopeDef = null;
+    scopes.forEach(function (s) {
+      if (s && s.id === activeScope) {
+        scopeDef = s;
+      }
+    });
+    if (scopes.length) {
+      var bar = el("div", {
+        className: "btn-group mb-3 flex-wrap",
+        role: "group",
+      });
+      function scopeBtn(id, label, selected) {
+        var btn = el("button", {
+          className: "btn btn-sm " + (selected ? "btn-primary" : "btn-outline-primary"),
+          type: "button",
+          text: label,
+        });
+        btn.addEventListener("click", function () {
+          if (!id) {
+            go("#list/" + tableName);
+            return;
+          }
+          go("#list/" + tableName + "?scope=" + encodeURIComponent(id));
+        });
+        return btn;
+      }
+      bar.appendChild(scopeBtn("", "All", !activeScope));
+      scopes.forEach(function (s) {
+        if (!s || !s.id) {
+          return;
+        }
+        bar.appendChild(scopeBtn(s.id, s.label || s.id, s.id === activeScope));
+      });
+      main.appendChild(bar);
+    }
 
     var search = el("input", {
       className: "form-control mb-3",
@@ -282,9 +321,24 @@
     main.appendChild(wrap);
 
     function load(q) {
-      var path = "/api/tables/" + encodeURIComponent(tableName);
+      var params = [];
       if (q) {
-        path += "?q=" + encodeURIComponent(q);
+        params.push("q=" + encodeURIComponent(q));
+      }
+      if (scopeDef && scopeDef.column) {
+        var sval = scopeDef.value;
+        if (typeof sval === "boolean") {
+          sval = sval ? "1" : "0";
+        }
+        params.push(
+          encodeURIComponent(scopeDef.column) +
+            "=" +
+            encodeURIComponent(String(sval))
+        );
+      }
+      var path = "/api/tables/" + encodeURIComponent(tableName);
+      if (params.length) {
+        path += "?" + params.join("&");
       }
       api(path)
         .then(function (rows) {
@@ -902,7 +956,7 @@
     }
     var loc = parseHash();
     if (loc.kind === "list") {
-      drawList(loc.table);
+      drawList(loc.table, loc.query);
       return;
     }
     if (loc.kind === "form") {

@@ -111,7 +111,11 @@ List:
   "table": "books",
   "title": "Books",
   "columns": ["title", "status"],
-  "nav": true
+  "nav": true,
+  "scopes": [
+    { "id": "open", "label": "Open", "column": "status", "value": "open" },
+    { "id": "done", "label": "Done", "column": "status", "value": "done" }
+  ]
 }
 
 Form:
@@ -136,6 +140,8 @@ Screen `id` is snake_case and unique across the current schema and this diff.
 `nav` is a boolean. Default true. Set `"nav": false` on join-table lists so they do not appear in the navbar.
 
 `related` is only allowed on form screens. Each item is a child list on that form. `table` is the child table. `fk` is an fk column on the child that points at the form table. The host filters child rows by the parent id and hides that fk on add/edit.
+
+`scopes` is only allowed on list screens. Each item is a named filter button. `id` is snake_case. `label` is shown in the UI. Optional `column` + `value` filter rows by equality. Omit `column` only when the scope means “all rows” (usually unnecessary; the host always offers All). Prefer a `select` column for status-style scopes. Do not create a new table for Open/Closed.
 
 Every user-facing catalog or primary noun needs one list screen and one form screen.
 
@@ -165,6 +171,8 @@ Patch an existing screen. Example, attach children to a form that already exists
 }
 
 Or hide a join list: `{ "id": "recipe_ingredients_list", "nav": false }`
+
+Or add list scopes: `{ "id": "tasks_list", "scopes": [{ "id": "open", "label": "Open", "column": "status", "value": "open" }] }`
 
 ## extend_enums
 
@@ -240,6 +248,7 @@ Examples:
 - “Add a phone number” when `contacts` exists → `add_columns` only.
 - “Call it a Rolodex” → `app.title` and `update_labels`, no new tables if the model already fits.
 - If the join table already exists but the parent form has no `related`, use `update_screens`.
+- “Show open and done tasks” when `status` exists → list `scopes`, not a new table.
 
 If the user asks to delete data or wipe a table, do not emit destructive keys. Return `add_tables` empty and a `summary` that says the host cannot delete tables. Change nothing else.
 

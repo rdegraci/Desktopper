@@ -247,6 +247,100 @@ class ScreenLanguageTests(unittest.TestCase):
         bad = client.get("/api/tables/recipe_ingredients?title=nope")
         self.assertEqual(bad.status_code, 400)
 
+    def test_list_scopes_filter_select(self) -> None:
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Tasks with status scopes.",
+                "add_tables": [
+                    {
+                        "name": "tasks",
+                        "label": "Tasks",
+                        "columns": [
+                            {
+                                "name": "title",
+                                "type": "TEXT",
+                                "label": "Title",
+                                "nullable": False,
+                                "widget": "text",
+                            },
+                            {
+                                "name": "status",
+                                "type": "TEXT",
+                                "label": "Status",
+                                "nullable": False,
+                                "widget": "select",
+                                "enum": ["open", "done"],
+                            },
+                        ],
+                    }
+                ],
+                "add_screens": [
+                    {
+                        "id": "tasks_list",
+                        "type": "list",
+                        "table": "tasks",
+                        "title": "Tasks",
+                        "columns": ["title", "status"],
+                        "scopes": [
+                            {
+                                "id": "open",
+                                "label": "Open",
+                                "column": "status",
+                                "value": "open",
+                            },
+                            {
+                                "id": "done",
+                                "label": "Done",
+                                "column": "status",
+                                "value": "done",
+                            },
+                        ],
+                    },
+                    {
+                        "id": "tasks_form",
+                        "type": "form",
+                        "table": "tasks",
+                        "title": "Task",
+                    },
+                ],
+            },
+        )
+        schema = read_or_create_schema(self.appdir)
+        scopes = [s for s in schema["screens"] if s["id"] == "tasks_list"][0]["scopes"]
+        self.assertEqual(len(scopes), 2)
+        client = create_app().test_client()
+        client.post("/api/tables/tasks", json={"title": "Cook", "status": "open"})
+        client.post("/api/tables/tasks", json={"title": "Clean", "status": "done"})
+        open_rows = client.get("/api/tables/tasks?status=open").get_json()
+        self.assertEqual(len(open_rows), 1)
+        self.assertEqual(open_rows[0]["title"], "Cook")
+        done_rows = client.get("/api/tables/tasks?status=done").get_json()
+        self.assertEqual(len(done_rows), 1)
+        self.assertEqual(done_rows[0]["title"], "Clean")
+
+    def test_scopes_rejected_on_form(self) -> None:
+        apply_diff(self.cfg, RECIPES)
+        with self.assertRaises(ValidationError) as ctx:
+            apply_diff(
+                self.cfg,
+                {
+                    "summary": "Bad scopes.",
+                    "update_screens": [
+                        {
+                            "id": "recipes_form",
+                            "scopes": [
+                                {
+                                    "id": "all",
+                                    "label": "All",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            )
+        self.assertEqual(ctx.exception.error_code, "bad_name")
+
 
 if __name__ == "__main__":
     unittest.main()

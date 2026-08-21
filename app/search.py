@@ -98,23 +98,47 @@ def _where_for_tokens(
     return " AND " + " AND ".join(token_clauses), params
 
 
-def _fk_filter_sql(table: dict[str, Any], filters: dict[str, str]) -> tuple[str, list[int]]:
+def _eq_filter_sql(table: dict[str, Any], filters: dict[str, str]) -> tuple[str, list[Any]]:
     if not filters:
         return "", []
     cmap = {c["name"]: c for c in _columns(table)}
     sql = ""
-    params: list[int] = []
+    params: list[Any] = []
     for name, raw in filters.items():
         if not NAME_RE.match(name):
             raise CrudError(400, "Bad filter name.")
         col = cmap.get(name)
-        if not col or col.get("widget") != "fk":
+        if not col:
             raise CrudError(400, f"Cannot filter on {name}.")
-        try:
+        widget = col.get("widget") or "text"
+        if widget == "fk":
+            try:
+                params.append(int(raw))
+            except (TypeError, ValueError):
+                raise CrudError(400, f"{name} must be an integer.") from None
+            sql += " AND " + _quote_ident(name) + " = ?"
+            continue
+        if widget == "checkbox":
+            if raw not in ("0", "1"):
+                raise CrudError(400, f"{name} must be 0 or 1.")
             params.append(int(raw))
-        except (TypeError, ValueError):
-            raise CrudError(400, f"{name} must be an integer.") from None
-        sql += " AND " + _quote_ident(name) + " = ?"
+            sql += " AND " + _quote_ident(name) + " = ?"
+            continue
+        if widget == "number":
+            try:
+                if col.get("type") == "INTEGER":
+                    params.append(int(raw))
+                else:
+                    params.append(float(raw))
+            except (TypeError, ValueError):
+                raise CrudError(400, f"{name} must be a number.") from None
+            sql += " AND " + _quote_ident(name) + " = ?"
+            continue
+        if widget in ("select", "text", "textarea"):
+            params.append(str(raw))
+            sql += " AND " + _quote_ident(name) + " = ?"
+            continue
+        raise CrudError(400, f"Cannot filter on {name}.")
     return sql, params
 
 
@@ -135,7 +159,7 @@ def list_rows_search(
     offset = max(0, int(offset))
     sql = _select_sql(table_name, table)
     extra, params = _where_for_tokens(schema, table_name, table, tokens)
-    filter_sql, filter_params = _fk_filter_sql(table, filters or {})
+    filter_sql, filter_params = _eq_filter_sql(table, filters or {})
     if extra or filter_sql:
         sql += " WHERE 1=1" + filter_sql + extra
     sql += " ORDER BY " + _quote_ident("id") + " LIMIT ? OFFSET ?"

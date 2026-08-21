@@ -147,6 +147,8 @@ def _merge_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, Any
                 screen["nav"] = item["nav"]
             if "related" in item:
                 screen["related"] = copy.deepcopy(item["related"])
+            if "scopes" in item:
+                screen["scopes"] = copy.deepcopy(item["scopes"])
             break
 
     for item in diff.get("extend_enums") or []:

@@ -38,9 +38,11 @@ COLUMN_KEYS = {
 }
 TABLE_KEYS = {"name", "label", "hidden", "columns"}
 APP_KEYS = {"title", "prompt", "home"}
-SCREEN_KEYS = {"id", "type", "table", "title", "columns", "nav", "related"}
-UPDATE_SCREEN_KEYS = {"id", "title", "columns", "nav", "related"}
+SCREEN_KEYS = {"id", "type", "table", "title", "columns", "nav", "related", "scopes"}
+UPDATE_SCREEN_KEYS = {"id", "title", "columns", "nav", "related", "scopes"}
 RELATED_KEYS = {"table", "fk", "title", "columns"}
+SCOPE_KEYS = {"id", "label", "column", "value"}
+SCOPE_FILTER_WIDGETS = {"select", "checkbox", "text", "number", "textarea"}
 
 
 class ValidationError(Exception):
@@ -287,6 +289,10 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             if stype != "form":
                 raise ValidationError("bad_name", "related is only allowed on form screens.")
             _check_related(ptables, tname, item.get("related"))
+        if "scopes" in item:
+            if stype != "list":
+                raise ValidationError("bad_name", "scopes is only allowed on list screens.")
+            _check_scopes(ptables, tname, item.get("scopes"))
 
     screen_by_id: dict[str, dict[str, Any]] = {}
     for screen in schema.get("screens") or []:
@@ -311,6 +317,10 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             if current.get("type") != "form":
                 raise ValidationError("bad_name", "related is only allowed on form screens.")
             _check_related(ptables, current.get("table"), item.get("related"))
+        if "scopes" in item:
+            if current.get("type") != "list":
+                raise ValidationError("bad_name", "scopes is only allowed on list screens.")
+            _check_scopes(ptables, current.get("table"), item.get("scopes"))
         if "title" in item and not isinstance(item.get("title"), str):
             raise ValidationError("bad_name", "Screen title must be a string.")
         if "columns" in item:
@@ -379,6 +389,57 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             raise ValidationError("bad_name", "Cannot hide id.")
         if not _is_name(cname) or cname not in _column_map(ptables[tname]):
             raise ValidationError("bad_name", "hide_columns column is missing.")
+
+
+def _check_scopes(tables: dict[str, Any], list_table: Any, scopes: Any) -> None:
+    if not isinstance(scopes, list):
+        raise ValidationError("bad_name", "scopes must be an array.")
+    if not _is_name(list_table) or list_table not in tables:
+        raise ValidationError("bad_name", "scopes list table is missing.")
+    cmap = _column_map(tables[list_table])
+    seen: set[str] = set()
+    for item in scopes:
+        if not isinstance(item, dict):
+            raise ValidationError("bad_name", "scopes items must be objects.")
+        extra = set(item.keys()) - SCOPE_KEYS
+        if extra:
+            raise ValidationError("unknown_key", "scopes item has unknown keys.")
+        sid = item.get("id")
+        if not _is_name(sid):
+            raise ValidationError("bad_name", "Scope id is not snake_case.")
+        if sid in seen:
+            raise ValidationError("bad_name", f"Scope id {sid} is not unique.")
+        seen.add(sid)
+        label = item.get("label")
+        if not isinstance(label, str) or not label.strip():
+            raise ValidationError("bad_name", "Scope label is required.")
+        if "column" not in item:
+            if "value" in item:
+                raise ValidationError("bad_name", "Scope value needs a column.")
+            continue
+        cname = item.get("column")
+        if not _is_name(cname) or cname not in cmap:
+            raise ValidationError("bad_name", "Scope column is missing.")
+        col = cmap[cname]
+        widget = col.get("widget") or "text"
+        if widget not in SCOPE_FILTER_WIDGETS:
+            raise ValidationError("bad_name", "Scope column widget is not filterable.")
+        if "value" not in item:
+            raise ValidationError("bad_name", "Scope filter needs a value.")
+        value = item.get("value")
+        if widget == "checkbox":
+            if value not in (0, 1, True, False):
+                raise ValidationError("bad_name", "Scope checkbox value must be 0 or 1.")
+        elif widget == "number":
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise ValidationError("bad_name", "Scope number value must be a number.")
+        elif widget == "select":
+            enum = col.get("enum") or []
+            if not isinstance(value, str) or value not in enum:
+                raise ValidationError("bad_name", "Scope select value must be an enum string.")
+        else:
+            if not isinstance(value, str):
+                raise ValidationError("bad_name", "Scope text value must be a string.")
 
 
 def _check_related(tables: dict[str, Any], form_table: Any, related: Any) -> None:
