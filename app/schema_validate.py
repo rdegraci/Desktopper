@@ -11,6 +11,7 @@ ALLOWED_DIFF_KEYS = {
     "app",
     "add_tables",
     "add_columns",
+    "update_columns",
     "add_screens",
     "update_screens",
     "update_tables",
@@ -54,6 +55,8 @@ COLUMN_KEYS = {
     "pk",
     "default",
 }
+UPDATE_COLUMN_KEYS = {"table", "column", "widget", "label", "nullable", "enum"}
+UPDATE_COLUMN_PATCH_KEYS = {"widget", "label", "nullable", "enum"}
 TABLE_KEYS = {"name", "label", "hidden", "columns", "role"}
 UPDATE_TABLE_KEYS = {"name", "role"}
 TABLE_ROLES = {"primary", "lookup"}
@@ -153,6 +156,15 @@ def _check_column_def(col: Any, *, context: str) -> dict[str, Any]:
             f"(use INTEGER, REAL, or TEXT).",
         )
     widget = col.get("widget", "text")
+    _validate_widget_fits_type(col_type, widget, col, context=context)
+    if "nullable" in col and not isinstance(col["nullable"], bool):
+        raise ValidationError("bad_name", f"{context} nullable must be a boolean.")
+    return col
+
+
+def _validate_widget_fits_type(
+    col_type: str, widget: str, col: dict[str, Any], *, context: str
+) -> None:
     if widget not in ALLOWED_WIDGETS:
         raise ValidationError("bad_name", f"{context} has a bad widget.")
     if widget == "select":
@@ -172,14 +184,15 @@ def _check_column_def(col: Any, *, context: str) -> dict[str, Any]:
         if col_type != "INTEGER":
             raise ValidationError("bad_name", f"{context} fk type must be INTEGER.")
     if widget == "checkbox" and col_type != "INTEGER":
-        raise ValidationError("bad_name", f"{context} checkbox type must be INTEGER.")
+        raise ValidationError(
+            "bad_name",
+            f"{context}: checkbox requires an INTEGER column; "
+            f"use add_columns plus hide_columns instead.",
+        )
     if widget == "number" and col_type not in ("INTEGER", "REAL"):
         raise ValidationError("bad_name", f"{context} number type is bad.")
     if widget == "textarea" and col_type != "TEXT":
         raise ValidationError("bad_name", f"{context} textarea type must be TEXT.")
-    if "nullable" in col and not isinstance(col["nullable"], bool):
-        raise ValidationError("bad_name", f"{context} nullable must be a boolean.")
-    return col
 
 
 def _project_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, Any]:
@@ -256,6 +269,7 @@ def validate_diff(
 
     add_tables = diff.get("add_tables") or []
     add_columns = diff.get("add_columns") or []
+    update_columns = diff.get("update_columns") or []
     add_screens = diff.get("add_screens") or []
     update_screens = diff.get("update_screens") or []
     update_tables = diff.get("update_tables") or []
@@ -269,6 +283,7 @@ def validate_diff(
     for name, val in (
         ("add_tables", add_tables),
         ("add_columns", add_columns),
+        ("update_columns", update_columns),
         ("add_screens", add_screens),
         ("update_screens", update_screens),
         ("update_tables", update_tables),
@@ -329,7 +344,11 @@ def validate_diff(
             raise ValidationError("bad_name", "add_columns items must be objects.")
         extra_c = set(item.keys()) - {"table", "column"}
         if extra_c:
-            raise ValidationError("unknown_key", "add_columns item has unknown keys.")
+            raise ValidationError(
+                "unknown_key",
+                f"add_columns item has unknown keys: {sorted(extra_c)} "
+                f"(use table and column only).",
+            )
         tname = item.get("table")
         if not _is_name(tname):
             raise ValidationError("bad_name", "add_columns table name is bad.")
@@ -575,6 +594,64 @@ def validate_diff(
             raise ValidationError("bad_name", "Cannot hide id.")
         if not _is_name(cname) or cname not in _column_map(ptables[tname]):
             raise ValidationError("bad_name", "hide_columns column is missing.")
+
+    for item in update_columns:
+        if not isinstance(item, dict):
+            raise ValidationError("bad_name", "update_columns items must be objects.")
+        extra_uc = set(item.keys()) - UPDATE_COLUMN_KEYS
+        if extra_uc:
+            raise ValidationError(
+                "unknown_key",
+                f"update_columns item has unknown keys: {sorted(extra_uc)}.",
+            )
+        tname = item.get("table")
+        cname = item.get("column")
+        if not _is_name(tname) or tname not in ptables:
+            raise ValidationError("bad_name", "update_columns table is missing.")
+        if not _is_name(cname):
+            raise ValidationError("bad_name", "update_columns column name is bad.")
+        if cname in SYSTEM_COLUMNS:
+            raise ValidationError("bad_name", f"Cannot update system column {cname}.")
+        col = _column_map(ptables[tname]).get(cname)
+        if not col:
+            raise ValidationError("bad_name", f"update_columns column {cname} is missing.")
+        patches = set(item.keys()) & UPDATE_COLUMN_PATCH_KEYS
+        if not patches:
+            raise ValidationError(
+                "bad_name",
+                "update_columns must set widget, label, nullable, or enum.",
+            )
+        if "label" in item and not isinstance(item.get("label"), str):
+            raise ValidationError("bad_name", "update_columns label must be a string.")
+        if "nullable" in item and not isinstance(item.get("nullable"), bool):
+            raise ValidationError("bad_name", "update_columns nullable must be a boolean.")
+        if "widget" in item and item.get("widget") == "fk":
+            raise ValidationError(
+                "bad_name", "update_columns cannot set widget to fk; use add_columns."
+            )
+        if "enum" in item:
+            enum = item.get("enum")
+            if not isinstance(enum, list) or not enum or not all(isinstance(x, str) for x in enum):
+                raise ValidationError("bad_name", "update_columns enum must be strings.")
+        patched = copy.deepcopy(col)
+        if "widget" in item:
+            patched["widget"] = item["widget"]
+        if "label" in item:
+            patched["label"] = item["label"]
+        if "nullable" in item:
+            patched["nullable"] = item["nullable"]
+        if "enum" in item:
+            patched["enum"] = copy.deepcopy(item["enum"])
+        col_type = patched.get("type")
+        if col_type not in ALLOWED_TYPES:
+            raise ValidationError("bad_name", f"update_columns {cname} has a bad type.")
+        widget = patched.get("widget", "text")
+        _validate_widget_fits_type(
+            col_type,
+            widget,
+            patched,
+            context=f"update_columns {tname}.{cname}",
+        )
 
     _validate_hooks_diff(
         ptables,

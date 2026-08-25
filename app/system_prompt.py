@@ -28,6 +28,7 @@ Return only this shape. Omit a key when that list is empty, or use an empty arra
   "app": { "title": "Short app title", "home": "books_list" },
   "add_tables": [],
   "add_columns": [],
+  "update_columns": [],
   "add_screens": [],
   "update_screens": [],
   "update_tables": [],
@@ -368,6 +369,41 @@ Use human labels with spaces and capitals. Use snake_case only in `name` and `id
 """.strip() + "\n"
 
 COLUMN_RULES_SUPPLEMENT = """
+## add_columns
+
+Each item has exactly two keys: `table` and `column`. Do not put `name`, `type`, or `widget` next to `table`.
+
+```json
+{
+  "table": "books",
+  "column": {
+    "name": "isbn",
+    "type": "TEXT",
+    "label": "ISBN",
+    "nullable": true,
+    "widget": "text"
+  }
+}
+```
+
+## update_columns
+
+Patch an existing column's display. You cannot change `type`. Each item:
+
+```json
+{
+  "table": "books",
+  "column": "title",
+  "widget": "textarea"
+}
+```
+
+Allowed patch keys: `widget`, `label`, `nullable`, `enum` (when the widget is or becomes `select`).
+
+- To turn an **INTEGER** column into a checkbox: `update_columns` with `"widget": "checkbox"`.
+- To turn a **TEXT** field into a checkbox: you cannot change the SQLite type. Use `add_columns` for a new INTEGER checkbox column and `hide_columns` on the old text column in the same diff.
+- To rename a label only, you may use `update_labels` instead.
+
 ## Column fields (tables and add_columns)
 
 Allowed `type` values only: `INTEGER`, `REAL`, `TEXT`. Use exact uppercase spelling. Never use `string`, `boolean`, `url`, `date`, `datetime`, `varchar`, or other names.
@@ -406,7 +442,7 @@ def load_system_prompt() -> str:
         if "---" in text:
             text = text.split("---", 1)[1]
         text = text.strip()
-        if "Allowed `type` values only: `INTEGER`" not in text:
+        if "## update_columns" not in text:
             text += "\n\n" + COLUMN_RULES_SUPPLEMENT
         return text + _hooks_supplement() + "\n"
     return SYSTEM_PROMPT

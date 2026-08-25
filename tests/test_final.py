@@ -379,6 +379,159 @@ class FinalTests(unittest.TestCase):
             )
         self.assertIn("layout_id is only allowed", str(ctx.exception))
 
+    def test_add_columns_unknown_keys_lists_them(self):
+        schema = read_or_create_schema(self.cfg.appdir)
+        with self.assertRaises(ValidationError) as ctx:
+            validate_diff(
+                schema,
+                {
+                    "summary": "x",
+                    "add_tables": [
+                        {
+                            "name": "items",
+                            "label": "Items",
+                            "columns": [
+                                {
+                                    "name": "name",
+                                    "type": "TEXT",
+                                    "label": "Name",
+                                    "nullable": False,
+                                    "widget": "text",
+                                }
+                            ],
+                        }
+                    ],
+                    "add_columns": [
+                        {
+                            "table": "items",
+                            "name": "done",
+                            "type": "INTEGER",
+                            "widget": "checkbox",
+                        }
+                    ],
+                },
+            )
+        msg = str(ctx.exception)
+        self.assertIn("unknown keys", msg)
+        self.assertIn("name", msg)
+
+    def test_update_columns_checkbox_on_integer(self):
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Flag.",
+                "add_tables": [
+                    {
+                        "name": "repos",
+                        "label": "Repos",
+                        "columns": [
+                            {
+                                "name": "pinned",
+                                "type": "INTEGER",
+                                "label": "Pinned",
+                                "nullable": False,
+                                "widget": "number",
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Checkbox.",
+                "update_columns": [
+                    {"table": "repos", "column": "pinned", "widget": "checkbox", "label": "Pinned"}
+                ],
+            },
+        )
+        schema = read_or_create_schema(self.cfg.appdir)
+        col = next(c for c in schema["tables"]["repos"]["columns"] if c["name"] == "pinned")
+        self.assertEqual(col["widget"], "checkbox")
+
+    def test_text_to_checkbox_requires_new_column(self):
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Repos.",
+                "add_tables": [
+                    {
+                        "name": "repos",
+                        "label": "Repos",
+                        "columns": [
+                            {
+                                "name": "url",
+                                "type": "TEXT",
+                                "label": "Lives online",
+                                "nullable": True,
+                                "widget": "text",
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        schema = read_or_create_schema(self.cfg.appdir)
+        with self.assertRaises(ValidationError) as ctx:
+            validate_diff(
+                schema,
+                {
+                    "summary": "x",
+                    "update_columns": [
+                        {"table": "repos", "column": "url", "widget": "checkbox"}
+                    ],
+                },
+            )
+        self.assertIn("add_columns", str(ctx.exception))
+
+    def test_text_to_checkbox_via_add_and_hide(self):
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Repos.",
+                "add_tables": [
+                    {
+                        "name": "repos",
+                        "label": "Repos",
+                        "columns": [
+                            {
+                                "name": "url",
+                                "type": "TEXT",
+                                "label": "Lives online",
+                                "nullable": True,
+                                "widget": "text",
+                            }
+                        ],
+                    }
+                ],
+            },
+        )
+        schema = read_or_create_schema(self.cfg.appdir)
+        diff = {
+            "summary": "Checkbox.",
+            "add_columns": [
+                {
+                    "table": "repos",
+                    "column": {
+                        "name": "lives_online",
+                        "type": "INTEGER",
+                        "label": "Lives online",
+                        "nullable": False,
+                        "widget": "checkbox",
+                    },
+                }
+            ],
+            "hide_columns": [{"table": "repos", "column": "url"}],
+        }
+        validate_diff(schema, diff)
+        apply_diff(self.cfg, diff)
+        merged = read_or_create_schema(self.cfg.appdir)
+        url_col = next(c for c in merged["tables"]["repos"]["columns"] if c["name"] == "url")
+        live_col = next(c for c in merged["tables"]["repos"]["columns"] if c["name"] == "lives_online")
+        self.assertTrue(url_col.get("hidden"))
+        self.assertEqual(live_col.get("widget"), "checkbox")
+
     def test_unknown_layout_widget_rejected(self):
         schema = read_or_create_schema(self.cfg.appdir)
         with self.assertRaises(ValidationError):

@@ -168,6 +168,25 @@ def _merge_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, Any
                     current.append(val)
             col["enum"] = current
 
+    for item in diff.get("add_columns") or []:
+        table = out["tables"][item["table"]]
+        table.setdefault("columns", []).append(copy.deepcopy(item["column"]))
+
+    for item in diff.get("update_columns") or []:
+        table = out["tables"][item["table"]]
+        for col in table.get("columns") or []:
+            if col.get("name") != item["column"]:
+                continue
+            if "widget" in item:
+                col["widget"] = item["widget"]
+            if "label" in item:
+                col["label"] = item["label"]
+            if "nullable" in item:
+                col["nullable"] = item["nullable"]
+            if "enum" in item:
+                col["enum"] = copy.deepcopy(item["enum"])
+            break
+
     for item in diff.get("update_labels") or []:
         table = out["tables"][item["table"]]
         if "column" in item:
