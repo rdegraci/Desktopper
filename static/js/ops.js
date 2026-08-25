@@ -295,6 +295,7 @@
               ? result.body.summary
               : "Applied spec.";
           setText(summaryEl, summary);
+          loadReminders();
           var changed = (result.body && result.body.hooks_changed) || [];
           if (changed.length) {
             showHookPreview(changed, null);
@@ -629,4 +630,68 @@
 
   loadReminders();
   loadSchedulerStatus();
+
+  var syncExportBtn = document.getElementById("sync-export");
+  var syncImportFile = document.getElementById("sync-import-file");
+  var syncStatusEl = document.getElementById("sync-status");
+
+  if (syncExportBtn) {
+    syncExportBtn.addEventListener("click", function () {
+      fetch("/api/sync/export")
+        .then(function (res) {
+          return res.json();
+        })
+        .then(function (data) {
+          if (syncStatusEl) {
+            syncStatusEl.textContent =
+              "Exported " + String(data.count || 0) + " events to " + (data.path || "sync_out");
+          }
+        })
+        .catch(function () {
+          if (syncStatusEl) {
+            syncStatusEl.textContent = "Sync export failed.";
+          }
+        });
+    });
+  }
+
+  if (syncImportFile) {
+    syncImportFile.addEventListener("change", function () {
+      var file = syncImportFile.files && syncImportFile.files[0];
+      if (!file) {
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var payload = JSON.parse(String(reader.result || "{}"));
+          fetch("/api/sync/import", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+            .then(function (res) {
+              return res.json();
+            })
+            .then(function (data) {
+              if (syncStatusEl) {
+                syncStatusEl.textContent =
+                  "Imported " + String(data.applied || 0) + " events, skipped " + String(data.skipped || 0);
+              }
+            })
+            .catch(function () {
+              if (syncStatusEl) {
+                syncStatusEl.textContent = "Sync import failed.";
+              }
+            });
+        } catch (e) {
+          if (syncStatusEl) {
+            syncStatusEl.textContent = "Invalid JSON file.";
+          }
+        }
+      };
+      reader.readAsText(file);
+      syncImportFile.value = "";
+    });
+  }
 })();

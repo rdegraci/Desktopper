@@ -109,6 +109,16 @@
         <p class="text-danger mt-2" id="reminder-editor-error" hidden></p>
       </div>
       <p class="small text-muted" id="scheduler-status"></p>
+      <div class="d-flex flex-wrap gap-2 mb-3">
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="sync-export">
+          Sync export
+        </button>
+        <label class="btn btn-sm btn-outline-secondary mb-0">
+          Sync import
+          <input type="file" id="sync-import-file" accept="application/json,.json" hidden />
+        </label>
+      </div>
+      <p class="small text-muted" id="sync-status"></p>
       <hr />
       <h2 class="h5">Hooks</h2>
       <p class="text-muted small">
