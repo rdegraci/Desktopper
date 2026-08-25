@@ -7,7 +7,8 @@ import sqlite3
 from typing import Any, Callable
 
 from app.config import AppConfig, read_or_create_schema
-from app.engine import EngineError, _quote_ident, apply_diff, db_path
+from app.db_paths import db_path, quote_ident as _quote_ident
+from app.engine import EngineError, apply_diff
 from app.hooks import hook_sources, read_registry
 from app.llm import LlmError, chat_completion, parse_json_object
 from app.log import emit
@@ -58,6 +59,12 @@ def run_intent(
             "stats": stats,
             "hooks": hooks,
             "hook_sources": sources,
+            "formula_ids": [f.get("id") for f in (schema.get("formulas") or []) if isinstance(f, dict)],
+            "rule_ids": [r.get("id") for r in (schema.get("rules") or []) if isinstance(r, dict)],
+            "reminder_ids": [r.get("id") for r in (schema.get("reminders") or []) if isinstance(r, dict)],
+            "job_ids": [j.get("id") for j in (schema.get("jobs") or []) if isinstance(j, dict)],
+            "layout_ids": [l.get("id") for l in (schema.get("layouts") or []) if isinstance(l, dict)],
+            "role_names": [r.get("name") for r in (schema.get("roles") or []) if isinstance(r, dict)],
         }
     )
     messages = [

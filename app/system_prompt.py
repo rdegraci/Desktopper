@@ -1,5 +1,7 @@
 """System prompt sent to the LLM. JSON spec diff only."""
 
+from pathlib import Path
+
 SYSTEM_PROMPT = """
 You are the schema editor for a local SQLite app. The user describes an information app in ordinary language. You return one JSON object that extends the current schema. The host program applies the change and draws the UI.
 
@@ -367,4 +369,10 @@ Use human labels with spaces and capitals. Use snake_case only in `name` and `id
 
 
 def load_system_prompt() -> str:
+    path = Path(__file__).resolve().parent.parent / "docs" / "cache" / "FINAL-PROMPT.md"
+    if path.is_file():
+        text = path.read_text(encoding="utf-8")
+        if "---" in text:
+            text = text.split("---", 1)[1]
+        return text.strip() + "\n"
     return SYSTEM_PROMPT

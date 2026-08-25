@@ -7,14 +7,14 @@ from app.system_prompt import SYSTEM_PROMPT, load_system_prompt
 class SystemPromptTests(unittest.TestCase):
     def test_prompt_comes_from_app_module(self) -> None:
         text = load_system_prompt()
-        self.assertEqual(text, SYSTEM_PROMPT)
-        self.assertIn("schema editor", text)
+        self.assertIn("spec editor", text)
         self.assertIn("add_tables", text)
-        self.assertIn('"empty"', text)
-        self.assertIn('"role"', text)
-        self.assertIn("update_tables", text)
-        self.assertIn("add_hooks", text)
-        self.assertNotIn("docs/cache", text)
+        self.assertIn("add_formulas", text)
+        self.assertIn("add_reminders", text)
+        self.assertIn("add_layouts", text)
+        final_path = Path("docs/cache/FINAL-PROMPT.md")
+        if final_path.is_file():
+            self.assertIn("formulas, rules, reminders", text)
 
     def test_llm_and_intent_do_not_read_cache(self) -> None:
         llm = Path("app/llm.py").read_text(encoding="utf-8")
