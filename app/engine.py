@@ -77,6 +77,37 @@ def _alter_column_sql(table: str, col: dict[str, Any]) -> str:
     )
 
 
+def _drop_column_sql(table: str, column: str) -> str:
+    return f"ALTER TABLE {_quote_ident(table)} DROP COLUMN {_quote_ident(column)}"
+
+
+def _strip_column_from_screens(schema: dict[str, Any], table: str, column: str) -> None:
+    for screen in schema.get("screens") or []:
+        if not isinstance(screen, dict):
+            continue
+        if screen.get("table") == table and isinstance(screen.get("columns"), list):
+            screen["columns"] = [c for c in screen["columns"] if c != column]
+        for grp in screen.get("groups") or []:
+            if isinstance(grp, dict) and isinstance(grp.get("columns"), list):
+                grp["columns"] = [c for c in grp["columns"] if c != column]
+        kept_related = []
+        for rel in screen.get("related") or []:
+            if not isinstance(rel, dict):
+                kept_related.append(rel)
+                continue
+            if rel.get("table") == table and rel.get("fk") == column:
+                continue
+            if isinstance(rel.get("columns"), list):
+                rel["columns"] = [c for c in rel["columns"] if c != column]
+            kept_related.append(rel)
+        if "related" in screen:
+            screen["related"] = kept_related
+        if screen.get("table") == table and isinstance(screen.get("scopes"), list):
+            screen["scopes"] = [
+                s for s in screen["scopes"] if not isinstance(s, dict) or s.get("column") != column
+            ]
+
+
 def _system_column_defs() -> list[dict[str, Any]]:
     return [
         {
@@ -197,6 +228,15 @@ def _merge_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, Any
             if col.get("name") == item["column"]:
                 col["hidden"] = True
 
+    for item in diff.get("remove_columns") or []:
+        tname = item["table"]
+        cname = item["column"]
+        table = out["tables"][tname]
+        table["columns"] = [
+            c for c in (table.get("columns") or []) if c.get("name") != cname
+        ]
+        _strip_column_from_screens(out, tname, cname)
+
     out = merge_final_schema(out, diff)
 
     out["version"] = int(out.get("version") or 0) + 1
@@ -263,6 +303,8 @@ def apply_diff(
             conn.execute(_create_table_sql(item["name"], item.get("columns") or []))
         for item in diff.get("add_columns") or []:
             conn.execute(_alter_column_sql(item["table"], item["column"]))
+        for item in diff.get("remove_columns") or []:
+            conn.execute(_drop_column_sql(item["table"], item["column"]))
         conn.commit()
     except sqlite3.Error as exc:
         conn.rollback()
@@ -302,6 +344,10 @@ def apply_diff(
             "add_columns": [
                 f"{c.get('table')}.{c.get('column', {}).get('name')}"
                 for c in (diff.get("add_columns") or [])
+            ],
+            "remove_columns": [
+                f"{c.get('table')}.{c.get('column')}"
+                for c in (diff.get("remove_columns") or [])
             ],
             "hooks_changed": hooks_changed,
         },

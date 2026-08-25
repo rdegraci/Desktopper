@@ -14,6 +14,7 @@ class SystemPromptTests(unittest.TestCase):
         self.assertIn("add_layouts", text)
         self.assertIn("update_columns", text)
         self.assertIn("add_columns", text)
+        self.assertIn("remove_columns", text)
         final_path = Path("docs/cache/FINAL-PROMPT.md")
         if final_path.is_file():
             self.assertIn("formulas, rules, reminders", text)

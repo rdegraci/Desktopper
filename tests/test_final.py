@@ -1,5 +1,6 @@
 """FINAL-phase acceptance tests."""
 
+import copy
 import json
 import os
 import tempfile
@@ -555,6 +556,111 @@ class FinalTests(unittest.TestCase):
         live_col = next(c for c in merged["tables"]["repos"]["columns"] if c["name"] == "lives_online")
         self.assertTrue(url_col.get("hidden"))
         self.assertEqual(live_col.get("widget"), "checkbox")
+
+    def test_remove_columns_drops_field(self):
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Repos.",
+                "add_tables": [
+                    {
+                        "name": "repos",
+                        "label": "Repos",
+                        "columns": [
+                            {
+                                "name": "name",
+                                "type": "TEXT",
+                                "label": "Name",
+                                "nullable": False,
+                                "widget": "text",
+                            },
+                            {
+                                "name": "scratch",
+                                "type": "TEXT",
+                                "label": "Scratch",
+                                "nullable": True,
+                                "widget": "text",
+                            },
+                        ],
+                    }
+                ],
+            },
+        )
+        import sqlite3
+
+        from app.db_paths import db_path
+
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Remove scratch.",
+                "remove_columns": [{"table": "repos", "column": "scratch"}],
+            },
+        )
+        schema = read_or_create_schema(self.cfg.appdir)
+        names = [c["name"] for c in schema["tables"]["repos"]["columns"]]
+        self.assertNotIn("scratch", names)
+        conn = sqlite3.connect(str(db_path(self.cfg.appdir)))
+        try:
+            cols = [row[1] for row in conn.execute("PRAGMA table_info(repos)")]
+        finally:
+            conn.close()
+        self.assertNotIn("scratch", cols)
+
+    def test_remove_columns_blocks_system_column(self):
+        schema = read_or_create_schema(self.cfg.appdir)
+        with self.assertRaises(ValidationError) as ctx:
+            validate_diff(
+                schema,
+                {
+                    "summary": "x",
+                    "remove_columns": [{"table": "time_entries", "column": "id"}],
+                },
+            )
+        self.assertIn("system column", str(ctx.exception))
+
+    def test_remove_columns_strips_duplicate_schema_entries(self):
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Add temp.",
+                "add_columns": [
+                    {
+                        "table": "time_entries",
+                        "column": {
+                            "name": "temp_note",
+                            "type": "TEXT",
+                            "label": "Temp",
+                            "nullable": True,
+                            "widget": "text",
+                        },
+                    }
+                ],
+            },
+        )
+        schema_file = self.cfg.appdir / "schema.json"
+        schema = json.loads(schema_file.read_text(encoding="utf-8"))
+        dup = copy.deepcopy(
+            next(
+                c
+                for c in schema["tables"]["time_entries"]["columns"]
+                if c["name"] == "temp_note"
+            )
+        )
+        schema["tables"]["time_entries"]["columns"].append(dup)
+        schema_file.write_text(json.dumps(schema, indent=2) + "\n", encoding="utf-8")
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Remove temp.",
+                "remove_columns": [{"table": "time_entries", "column": "temp_note"}],
+            },
+        )
+        merged = read_or_create_schema(self.cfg.appdir)
+        self.assertEqual(
+            [c["name"] for c in merged["tables"]["time_entries"]["columns"]].count("temp_note"),
+            0,
+        )
 
     def test_unknown_layout_widget_rejected(self):
         schema = read_or_create_schema(self.cfg.appdir)

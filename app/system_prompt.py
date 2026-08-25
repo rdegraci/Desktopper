@@ -35,6 +35,7 @@ Return only this shape. Omit a key when that list is empty, or use an empty arra
   "extend_enums": [],
   "update_labels": [],
   "hide_columns": [],
+  "remove_columns": [],
   "add_hooks": [],
   "update_hooks": [],
   "disable_hooks": [],
@@ -260,6 +261,23 @@ Do not change `name`. The SQLite column name stays the same.
 
 Use this when you replace a field with a new column. Do not hide `id`.
 
+## remove_columns
+
+```json
+{
+  "table": "books",
+  "column": "old_status"
+}
+```
+
+Removes a column from the spec and drops it from SQLite. **Row data in that column is lost.** Use only when the user clearly wants the field removed, not merely hidden.
+
+- Prefer `hide_columns` when the user says stop showing a field or you replaced it with a new column.
+- Use `remove_columns` for duplicates, mistakes, or when the user asks to delete a field.
+- Never remove `id`, `created_at`, or `updated_at`.
+- Cannot remove a column used by a foreign-key display, formula, rule, or import profile map.
+- Say in `summary` that data in that column will be deleted.
+
 ## add_hooks
 
 Each item adds a Python hook file. CRUD hooks run on create, update, or delete inside the same database transaction as the row change. Startup hooks run once when the Python server starts.
@@ -316,9 +334,11 @@ Array of existing hook ids. Deletes the registry entry and file.
 
 Do not output keys other than those in the output object.
 
-Do not drop tables or columns.
+Do not drop tables.
 
 Do not rename tables or columns.
+
+Do not use `remove_columns` unless the user clearly wants the field deleted. Prefer `hide_columns` to stop showing a field.
 
 Do not narrow a type. Do not change `TEXT` to `INTEGER`.
 
@@ -418,6 +438,10 @@ Allowed `widget` values: `text`, `textarea`, `select`, `number`, `checkbox`, `fk
 - URLs, notes, names, and ISO dates/datetimes: `type` `TEXT`, `widget` `text` (or `textarea` for long notes). Put date meaning in the column `label`.
 
 `nullable` is a boolean. Do not hide a new column unless the intent asks for a technical field.
+
+## remove_columns
+
+Same shape as `hide_columns`: `{ "table", "column" }`. Drops the column and deletes stored values. Prefer `hide_columns` unless the user wants the field deleted. Never remove system columns.
 """.strip()
 
 
@@ -444,5 +468,7 @@ def load_system_prompt() -> str:
         text = text.strip()
         if "## update_columns" not in text:
             text += "\n\n" + COLUMN_RULES_SUPPLEMENT
+        elif "## remove_columns" not in text:
+            text += "\n\n## remove_columns\n\nSame shape as `hide_columns`: `{ \"table\", \"column\" }`. Drops the column and deletes stored values. Prefer `hide_columns` unless the user wants the field deleted. Never remove system columns."
         return text + _hooks_supplement() + "\n"
     return SYSTEM_PROMPT

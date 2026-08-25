@@ -18,6 +18,7 @@ ALLOWED_DIFF_KEYS = {
     "extend_enums",
     "update_labels",
     "hide_columns",
+    "remove_columns",
     "add_hooks",
     "update_hooks",
     "disable_hooks",
@@ -162,6 +163,95 @@ def _check_column_def(col: Any, *, context: str) -> dict[str, Any]:
     return col
 
 
+def _collect_expr_column_refs(
+    node: Any, refs: set[tuple[str | None, str]], *, default_table: str | None = None
+) -> None:
+    if not isinstance(node, dict):
+        return
+    op = node.get("op")
+    if op == "col":
+        table = node.get("table") or default_table
+        column = node.get("column")
+        if isinstance(column, str):
+            refs.add((table, column))
+    if op in ("sum", "count", "avg", "min", "max"):
+        table = node.get("table") or default_table
+        column = node.get("column")
+        if isinstance(column, str):
+            refs.add((table, column))
+    for key, val in node.items():
+        if key == "op":
+            continue
+        if isinstance(val, dict):
+            _collect_expr_column_refs(val, refs, default_table=default_table)
+        elif isinstance(val, list):
+            for item in val:
+                _collect_expr_column_refs(item, refs, default_table=default_table)
+
+
+def _column_blocked_by_refs(
+    schema: dict[str, Any], diff: dict[str, Any], tname: str, cname: str
+) -> str | None:
+    ptables = _table_map(schema)
+    for tbl, table in ptables.items():
+        for col in table.get("columns") or []:
+            if col.get("widget") != "fk":
+                continue
+            fk = col.get("fk") or {}
+            if fk.get("table") == tname and fk.get("display") == cname:
+                return f"foreign key on {tbl}.{col.get('name')} displays {tname}.{cname}"
+
+    formulas = list(schema.get("formulas") or [])
+    for item in diff.get("add_formulas") or []:
+        if isinstance(item, dict):
+            formulas.append(item)
+    for formula in formulas:
+        if not isinstance(formula, dict):
+            continue
+        refs: set[tuple[str | None, str]] = set()
+        _collect_expr_column_refs(formula.get("expr"), refs)
+        for ref_table, ref_col in refs:
+            if ref_col == cname and (ref_table is None or ref_table == tname):
+                return f"formula {formula.get('id')} uses {tname}.{cname}"
+
+    rules = list(schema.get("rules") or [])
+    for item in diff.get("add_rules") or []:
+        if isinstance(item, dict):
+            rules.append(item)
+    for rule in rules:
+        if not isinstance(rule, dict):
+            continue
+        rule_table = rule.get("table")
+        refs = set()
+        _collect_expr_column_refs(rule.get("when"), refs, default_table=rule_table)
+        for ref_table, ref_col in refs:
+            if ref_col == cname and (ref_table is None or ref_table == tname):
+                if rule_table == tname or ref_table == tname:
+                    return f"rule {rule.get('id')} uses {tname}.{cname}"
+        for action in rule.get("then") or []:
+            if not isinstance(action, dict):
+                continue
+            if action.get("kind") == "set_column" and action.get("column") == cname:
+                if rule_table == tname:
+                    return f"rule {rule.get('id')} sets {tname}.{cname}"
+            fields = action.get("fields") or {}
+            if action.get("kind") == "create_row" and action.get("table") == tname:
+                if cname in fields:
+                    return f"rule {rule.get('id')} writes {tname}.{cname}"
+
+    profiles = list(schema.get("import_profiles") or [])
+    for item in diff.get("add_import_profiles") or []:
+        if isinstance(item, dict):
+            profiles.append(item)
+    for profile in profiles:
+        if not isinstance(profile, dict) or profile.get("table") != tname:
+            continue
+        mapping = profile.get("map") or {}
+        if cname in mapping.values():
+            return f"import profile {profile.get('id')} maps to {tname}.{cname}"
+    return None
+
+
 def _validate_widget_fits_type(
     col_type: str, widget: str, col: dict[str, Any], *, context: str
 ) -> None:
@@ -276,6 +366,7 @@ def validate_diff(
     extend_enums = diff.get("extend_enums") or []
     update_labels = diff.get("update_labels") or []
     hide_columns = diff.get("hide_columns") or []
+    remove_columns = diff.get("remove_columns") or []
     add_hooks = diff.get("add_hooks") or []
     update_hooks = diff.get("update_hooks") or []
     disable_hooks = diff.get("disable_hooks") or []
@@ -290,6 +381,7 @@ def validate_diff(
         ("extend_enums", extend_enums),
         ("update_labels", update_labels),
         ("hide_columns", hide_columns),
+        ("remove_columns", remove_columns),
         ("add_hooks", add_hooks),
         ("update_hooks", update_hooks),
         ("disable_hooks", disable_hooks),
@@ -594,6 +686,45 @@ def validate_diff(
             raise ValidationError("bad_name", "Cannot hide id.")
         if not _is_name(cname) or cname not in _column_map(ptables[tname]):
             raise ValidationError("bad_name", "hide_columns column is missing.")
+
+    removed: set[tuple[str, str]] = set()
+    for item in remove_columns:
+        if not isinstance(item, dict):
+            raise ValidationError("bad_name", "remove_columns items must be objects.")
+        extra_r = set(item.keys()) - {"table", "column"}
+        if extra_r:
+            raise ValidationError(
+                "unknown_key",
+                f"remove_columns item has unknown keys: {sorted(extra_r)}.",
+            )
+        tname = item.get("table")
+        cname = item.get("column")
+        if not _is_name(tname) or tname not in ptables:
+            raise ValidationError("bad_name", "remove_columns table is missing.")
+        if not _is_name(cname):
+            raise ValidationError("bad_name", "remove_columns column name is bad.")
+        if cname in SYSTEM_COLUMNS:
+            raise ValidationError("bad_name", f"Cannot remove system column {cname}.")
+        if cname not in _column_map(ptables[tname]):
+            raise ValidationError("bad_name", f"remove_columns column {cname} is missing.")
+        key = (tname, cname)
+        if key in removed:
+            raise ValidationError("bad_name", f"remove_columns duplicate {tname}.{cname}.")
+        removed.add(key)
+        for other in add_columns:
+            if (
+                isinstance(other, dict)
+                and other.get("table") == tname
+                and isinstance(other.get("column"), dict)
+                and other["column"].get("name") == cname
+            ):
+                raise ValidationError(
+                    "bad_name",
+                    f"Cannot add and remove {tname}.{cname} in the same diff.",
+                )
+        reason = _column_blocked_by_refs(schema, diff, tname, cname)
+        if reason:
+            raise ValidationError("bad_name", f"Cannot remove {tname}.{cname}: {reason}.")
 
     for item in update_columns:
         if not isinstance(item, dict):
