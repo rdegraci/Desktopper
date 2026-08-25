@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.config import AppConfig, read_or_create_schema
-from app.engine import db_path
+from app.db_paths import db_path
 from app.hooks import HookError, run_hooks
 from app.log import emit
 from app.schema_validate import NAME_RE, SYSTEM_COLUMNS
@@ -217,6 +217,11 @@ def insert_row(
                 depth=depth,
                 request_id=request_id,
             )
+            from app.rules import run_on_write_rules
+            from app.sync import append_row_sync
+
+            run_on_write_rules(cfg, table_name, row, conn=conn)
+            append_row_sync(cfg, table_name, new_id, {k: row[k] for k in fields if k in row}, conn=conn)
         except HookError as exc:
             conn.rollback()
             raise CrudError(500, f"Hook {exc.hook_id} failed: {exc.msg}") from exc
@@ -278,6 +283,15 @@ def update_row(
                 depth=depth,
                 request_id=request_id,
             )
+            from app.rules import run_on_write_rules
+            from app.sync import append_row_sync
+
+            run_on_write_rules(cfg, table_name, row_after, conn=conn)
+            for key in fields:
+                if key in row_after and row_before.get(key) != row_after.get(key):
+                    append_row_sync(
+                        cfg, table_name, row_id, {key: row_after[key]}, conn=conn
+                    )
         except HookError as exc:
             conn.rollback()
             raise CrudError(500, f"Hook {exc.hook_id} failed: {exc.msg}") from exc
@@ -331,6 +345,11 @@ def delete_row(
             conn.rollback()
             raise CrudError(500, f"Hook {exc.hook_id} failed: {exc.msg}") from exc
         conn.execute(sql, (row_id,))
+        from app.sync import append_sync_event
+
+        append_sync_event(
+            cfg, table=table_name, row_id=row_id, column="_deleted", value=1, conn=conn
+        )
         conn.commit()
     except CrudError:
         raise
