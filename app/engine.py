@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import AppConfig, read_or_create_schema, schema_path
+from app.hooks import apply_hook_diff, read_registry
 from app.log import emit
 from app.schema_validate import SYSTEM_COLUMNS, ValidationError, validate_diff
 
@@ -214,8 +215,9 @@ def apply_diff(
 ) -> dict[str, Any]:
     schema = read_or_create_schema(cfg.appdir)
     version_before = int(schema.get("version") or 0)
+    hooks_registry = read_registry(cfg.appdir)
     try:
-        validate_diff(schema, diff)
+        validate_diff(schema, diff, hooks_registry=hooks_registry)
     except ValidationError as exc:
         emit(
             cfg,
@@ -272,6 +274,7 @@ def apply_diff(
 
     merged = _merge_schema(schema, diff)
     schema_file.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
+    hooks_changed = apply_hook_diff(cfg, diff)
     summary = str(diff.get("summary") or "Applied additive spec.")
     _write_migration(cfg.appdir, int(merged["version"]), summary, diff)
     emit(
@@ -289,6 +292,8 @@ def apply_diff(
                 f"{c.get('table')}.{c.get('column', {}).get('name')}"
                 for c in (diff.get("add_columns") or [])
             ],
+            "hooks_changed": hooks_changed,
         },
     )
+    merged["_hooks_changed"] = hooks_changed
     return merged

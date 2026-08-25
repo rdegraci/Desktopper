@@ -17,6 +17,10 @@ ALLOWED_DIFF_KEYS = {
     "extend_enums",
     "update_labels",
     "hide_columns",
+    "add_hooks",
+    "update_hooks",
+    "disable_hooks",
+    "remove_hooks",
 }
 
 FORBIDDEN_KEY_HINTS = ("drop", "rename")
@@ -67,6 +71,9 @@ RELATED_KEYS = {"table", "fk", "title", "columns", "empty"}
 SCOPE_KEYS = {"id", "label", "column", "value"}
 GROUP_KEYS = {"id", "label", "columns"}
 SCOPE_FILTER_WIDGETS = {"select", "checkbox", "text", "number", "textarea"}
+HOOK_EVENTS = frozenset({"create", "update", "delete"})
+ADD_HOOK_KEYS = {"id", "table", "on", "code"}
+UPDATE_HOOK_KEYS = {"id", "code", "enabled"}
 
 
 class ValidationError(Exception):
@@ -199,7 +206,12 @@ def _project_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, A
     return projected
 
 
-def validate_diff(schema: dict[str, Any], diff: Any) -> None:
+def validate_diff(
+    schema: dict[str, Any],
+    diff: Any,
+    *,
+    hooks_registry: dict[str, Any] | None = None,
+) -> None:
     if not isinstance(diff, dict):
         raise ValidationError("invalid_json", "Spec diff must be a JSON object.")
     keys = set(diff.keys())
@@ -229,6 +241,10 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
     extend_enums = diff.get("extend_enums") or []
     update_labels = diff.get("update_labels") or []
     hide_columns = diff.get("hide_columns") or []
+    add_hooks = diff.get("add_hooks") or []
+    update_hooks = diff.get("update_hooks") or []
+    disable_hooks = diff.get("disable_hooks") or []
+    remove_hooks = diff.get("remove_hooks") or []
     for name, val in (
         ("add_tables", add_tables),
         ("add_columns", add_columns),
@@ -238,6 +254,10 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
         ("extend_enums", extend_enums),
         ("update_labels", update_labels),
         ("hide_columns", hide_columns),
+        ("add_hooks", add_hooks),
+        ("update_hooks", update_hooks),
+        ("disable_hooks", disable_hooks),
+        ("remove_hooks", remove_hooks),
     ):
         if not isinstance(val, list):
             raise ValidationError("bad_name", f"{name} must be an array.")
@@ -483,6 +503,87 @@ def validate_diff(schema: dict[str, Any], diff: Any) -> None:
             raise ValidationError("bad_name", "Cannot hide id.")
         if not _is_name(cname) or cname not in _column_map(ptables[tname]):
             raise ValidationError("bad_name", "hide_columns column is missing.")
+
+    _validate_hooks_diff(
+        ptables,
+        add_hooks,
+        update_hooks,
+        disable_hooks,
+        remove_hooks,
+        hooks_registry or {"hooks": []},
+    )
+
+
+def _check_hook_code(code: Any, *, filename: str) -> None:
+    if not isinstance(code, str) or not code.strip():
+        raise ValidationError("bad_hook", "Hook code must be a non-empty string.")
+    try:
+        compile(code, filename, "exec")
+    except SyntaxError as exc:
+        raise ValidationError("bad_hook", f"Hook code has a syntax error: {exc}") from exc
+
+
+def _hook_ids(registry: dict[str, Any]) -> set[str]:
+    out: set[str] = set()
+    for item in registry.get("hooks") or []:
+        if isinstance(item, dict) and _is_name(item.get("id")):
+            out.add(item["id"])
+    return out
+
+
+def _validate_hooks_diff(
+    ptables: dict[str, Any],
+    add_hooks: list[Any],
+    update_hooks: list[Any],
+    disable_hooks: list[Any],
+    remove_hooks: list[Any],
+    hooks_registry: dict[str, Any],
+) -> None:
+    existing_ids = _hook_ids(hooks_registry)
+    new_ids: set[str] = set()
+
+    for item in add_hooks:
+        if not isinstance(item, dict):
+            raise ValidationError("bad_hook", "add_hooks items must be objects.")
+        extra = set(item.keys()) - ADD_HOOK_KEYS
+        if extra:
+            raise ValidationError("unknown_key", "add_hooks item has unknown keys.")
+        hid = item.get("id")
+        tname = item.get("table")
+        event = item.get("on")
+        if not _is_name(hid):
+            raise ValidationError("bad_hook", "Hook id is not snake_case.")
+        if hid in existing_ids or hid in new_ids:
+            raise ValidationError("bad_hook", f"Hook id {hid} is not unique.")
+        new_ids.add(hid)
+        if not _is_name(tname) or tname not in ptables:
+            raise ValidationError("bad_hook", f"Hook table {tname} is missing.")
+        if event not in HOOK_EVENTS:
+            raise ValidationError("bad_hook", "Hook on must be create, update, or delete.")
+        _check_hook_code(item.get("code"), filename=f"{hid}.py")
+
+    for item in update_hooks:
+        if not isinstance(item, dict):
+            raise ValidationError("bad_hook", "update_hooks items must be objects.")
+        extra = set(item.keys()) - UPDATE_HOOK_KEYS
+        if extra:
+            raise ValidationError("unknown_key", "update_hooks item has unknown keys.")
+        hid = item.get("id")
+        if not _is_name(hid) or hid not in existing_ids:
+            raise ValidationError("bad_hook", f"Hook {hid} does not exist.")
+        if "code" not in item:
+            raise ValidationError("bad_hook", "update_hooks must include code.")
+        _check_hook_code(item.get("code"), filename=f"{hid}.py")
+        if "enabled" in item and not isinstance(item.get("enabled"), bool):
+            raise ValidationError("bad_hook", "Hook enabled must be a boolean.")
+
+    for hid in disable_hooks:
+        if not _is_name(hid) or hid not in existing_ids:
+            raise ValidationError("bad_hook", f"Hook {hid} does not exist.")
+
+    for hid in remove_hooks:
+        if not _is_name(hid) or hid not in existing_ids:
+            raise ValidationError("bad_hook", f"Hook {hid} does not exist.")
 
 
 def _check_groups(tables: dict[str, Any], form_table: Any, groups: Any) -> None:

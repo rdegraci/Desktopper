@@ -19,6 +19,13 @@ from app.crud import (
     update_row,
 )
 from app.engine import EngineError
+from app.hooks import (
+    get_hook,
+    list_hooks_metadata,
+    remove_hook,
+    save_hook_code,
+    set_hook_enabled,
+)
 from app.intent import run_intent
 from app.llm import LlmError, public_error_message
 from app.search import global_search, list_rows_search
@@ -204,6 +211,50 @@ def create_app(*, llm_complete=None) -> Flask:
             return ("", 204)
         except CrudError as err:
             return _crud_error(err)
+
+    @flask_app.get("/api/hooks")
+    def api_hooks_list():
+        return jsonify({"hooks": list_hooks_metadata(cfg)})
+
+    @flask_app.get("/api/hooks/<hook_id>")
+    def api_hooks_get(hook_id: str):
+        try:
+            return jsonify(get_hook(cfg, hook_id))
+        except ValidationError as exc:
+            return jsonify({"error": exc.msg, "error_code": exc.error_code}), 404
+
+    @flask_app.put("/api/hooks/<hook_id>")
+    def api_hooks_put(hook_id: str):
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or "code" not in body:
+            return jsonify({"error": "code is required.", "error_code": "invalid_json"}), 400
+        try:
+            save_hook_code(cfg, hook_id, body["code"])
+            return jsonify(get_hook(cfg, hook_id))
+        except ValidationError as exc:
+            return jsonify({"error": exc.msg, "error_code": exc.error_code}), 400
+
+    @flask_app.patch("/api/hooks/<hook_id>")
+    def api_hooks_patch(hook_id: str):
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict) or "enabled" not in body:
+            return (
+                jsonify({"error": "enabled is required.", "error_code": "invalid_json"}),
+                400,
+            )
+        try:
+            set_hook_enabled(cfg, hook_id, bool(body["enabled"]))
+            return jsonify(get_hook(cfg, hook_id))
+        except ValidationError as exc:
+            return jsonify({"error": exc.msg, "error_code": exc.error_code}), 404
+
+    @flask_app.delete("/api/hooks/<hook_id>")
+    def api_hooks_delete(hook_id: str):
+        try:
+            remove_hook(cfg, hook_id)
+            return ("", 204)
+        except ValidationError as exc:
+            return jsonify({"error": exc.msg, "error_code": exc.error_code}), 404
 
     @flask_app.post("/api/intent")
     def api_intent():

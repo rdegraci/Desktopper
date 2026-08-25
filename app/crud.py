@@ -8,6 +8,7 @@ from typing import Any
 
 from app.config import AppConfig, read_or_create_schema
 from app.engine import db_path
+from app.hooks import HookError, run_hooks
 from app.log import emit
 from app.schema_validate import NAME_RE, SYSTEM_COLUMNS
 
@@ -155,17 +156,26 @@ def list_rows(
         conn.close()
 
 
-def get_row(cfg: AppConfig, table_name: str, row_id: int) -> dict[str, Any]:
-    schema = read_or_create_schema(cfg.appdir)
+def _get_row_conn(
+    conn: sqlite3.Connection,
+    schema: dict[str, Any],
+    table_name: str,
+    row_id: int,
+) -> dict[str, Any]:
     table = _require_table(schema, table_name)
     sql = _select_sql(table_name, table) + " WHERE " + _quote_ident("id") + " = ?"
+    cur = conn.execute(sql, (row_id,))
+    row = cur.fetchone()
+    if row is None:
+        raise CrudError(404, "Row not found.")
+    return _row_to_dict(cur, row)
+
+
+def get_row(cfg: AppConfig, table_name: str, row_id: int) -> dict[str, Any]:
+    schema = read_or_create_schema(cfg.appdir)
     conn = _connect(cfg)
     try:
-        cur = conn.execute(sql, (row_id,))
-        row = cur.fetchone()
-        if row is None:
-            raise CrudError(404, "Row not found.")
-        return _row_to_dict(cur, row)
+        return _get_row_conn(conn, schema, table_name, row_id)
     finally:
         conn.close()
 
@@ -176,6 +186,7 @@ def insert_row(
     body: dict[str, Any],
     *,
     request_id: str | None = None,
+    depth: int = 0,
 ) -> dict[str, Any]:
     schema = read_or_create_schema(cfg.appdir)
     table = _require_table(schema, table_name)
@@ -190,10 +201,31 @@ def insert_row(
         f"INSERT INTO {_quote_ident(table_name)} ({col_sql}) VALUES ({placeholders})"
     )
     conn = _connect(cfg)
+    new_id = 0
     try:
+        conn.execute("BEGIN")
         cur = conn.execute(sql, tuple(fields[n] for n in names))
-        conn.commit()
         new_id = int(cur.lastrowid)
+        row = _get_row_conn(conn, schema, table_name, new_id)
+        try:
+            run_hooks(
+                cfg,
+                conn=conn,
+                table=table_name,
+                event="create",
+                row=row,
+                depth=depth,
+                request_id=request_id,
+            )
+        except HookError as exc:
+            conn.rollback()
+            raise CrudError(500, f"Hook {exc.hook_id} failed: {exc.msg}") from exc
+        conn.commit()
+    except CrudError:
+        raise
+    except sqlite3.Error as exc:
+        conn.rollback()
+        raise CrudError(500, "Insert failed.") from exc
     finally:
         conn.close()
     emit(
@@ -215,10 +247,10 @@ def update_row(
     body: dict[str, Any],
     *,
     request_id: str | None = None,
+    depth: int = 0,
 ) -> dict[str, Any]:
     schema = read_or_create_schema(cfg.appdir)
     table = _require_table(schema, table_name)
-    get_row(cfg, table_name, row_id)
     fields = _pick_fields(table, body)
     fields["updated_at"] = _now()
     names = list(fields.keys())
@@ -231,8 +263,30 @@ def update_row(
     params = tuple(fields[n] for n in names) + (row_id,)
     conn = _connect(cfg)
     try:
+        conn.execute("BEGIN")
+        row_before = _get_row_conn(conn, schema, table_name, row_id)
         conn.execute(sql, params)
+        row_after = _get_row_conn(conn, schema, table_name, row_id)
+        try:
+            run_hooks(
+                cfg,
+                conn=conn,
+                table=table_name,
+                event="update",
+                row=row_after,
+                row_before=row_before,
+                depth=depth,
+                request_id=request_id,
+            )
+        except HookError as exc:
+            conn.rollback()
+            raise CrudError(500, f"Hook {exc.hook_id} failed: {exc.msg}") from exc
         conn.commit()
+    except CrudError:
+        raise
+    except sqlite3.Error as exc:
+        conn.rollback()
+        raise CrudError(500, "Update failed.") from exc
     finally:
         conn.close()
     emit(
@@ -253,15 +307,36 @@ def delete_row(
     row_id: int,
     *,
     request_id: str | None = None,
+    depth: int = 0,
 ) -> None:
     schema = read_or_create_schema(cfg.appdir)
     _require_table(schema, table_name)
-    get_row(cfg, table_name, row_id)
     sql = f"DELETE FROM {_quote_ident(table_name)} WHERE " + _quote_ident("id") + " = ?"
     conn = _connect(cfg)
     try:
+        conn.execute("BEGIN")
+        row_before = _get_row_conn(conn, schema, table_name, row_id)
+        try:
+            run_hooks(
+                cfg,
+                conn=conn,
+                table=table_name,
+                event="delete",
+                row=row_before,
+                row_before=row_before,
+                depth=depth,
+                request_id=request_id,
+            )
+        except HookError as exc:
+            conn.rollback()
+            raise CrudError(500, f"Hook {exc.hook_id} failed: {exc.msg}") from exc
         conn.execute(sql, (row_id,))
         conn.commit()
+    except CrudError:
+        raise
+    except sqlite3.Error as exc:
+        conn.rollback()
+        raise CrudError(500, "Delete failed.") from exc
     finally:
         conn.close()
     emit(

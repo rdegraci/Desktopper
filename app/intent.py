@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from app.config import AppConfig, read_or_create_schema
 from app.engine import EngineError, _quote_ident, apply_diff, db_path
+from app.hooks import hook_sources, read_registry
 from app.llm import LlmError, chat_completion, parse_json_object
 from app.log import emit
 from app.schema_validate import NAME_RE, ValidationError
@@ -48,7 +49,17 @@ def run_intent(
     schema = read_or_create_schema(cfg.appdir)
     version_before = int(schema.get("version") or 0)
     stats = collect_stats(cfg, schema)
-    user_payload = json.dumps({"intent": text, "schema": schema, "stats": stats})
+    hooks = read_registry(cfg.appdir)
+    sources = hook_sources(cfg.appdir)
+    user_payload = json.dumps(
+        {
+            "intent": text,
+            "schema": schema,
+            "stats": stats,
+            "hooks": hooks,
+            "hook_sources": sources,
+        }
+    )
     messages = [
         {"role": "system", "content": load_system_prompt()},
         {"role": "user", "content": user_payload},
@@ -181,6 +192,7 @@ def run_intent(
             detail={"error_code": exc.error_code},
         )
         raise
+    hooks_changed = merged.pop("_hooks_changed", [])
     emit(
         cfg,
         event="intent.apply.ok",
@@ -188,10 +200,11 @@ def run_intent(
         msg=str(diff.get("summary") or "Applied spec."),
         request_id=request_id,
         schema_version=int(merged.get("version") or 0),
-        detail={"error_code": None, "summary": diff.get("summary")},
+        detail={"error_code": None, "summary": diff.get("summary"), "hooks_changed": hooks_changed},
     )
     return {
         "summary": diff.get("summary") or "Applied spec.",
         "schema": merged,
         "version": int(merged.get("version") or 0),
+        "hooks_changed": hooks_changed,
     }

@@ -7,7 +7,7 @@ You do not write HTML, CSS, JavaScript, or SQL. You do not explain outside JSON.
 
 ## Task
 
-Read `intent`, `schema`, and `stats` in the user message.
+Read `intent`, `schema`, `stats`, `hooks`, and `hook_sources` in the user message.
 
 Return a spec diff that implements the intent with additive changes only.
 
@@ -31,7 +31,11 @@ Return only this shape. Omit a key when that list is empty, or use an empty arra
   "update_tables": [],
   "extend_enums": [],
   "update_labels": [],
-  "hide_columns": []
+  "hide_columns": [],
+  "add_hooks": [],
+  "update_hooks": [],
+  "disable_hooks": [],
+  "remove_hooks": []
 }
 
 `app` is optional. Set `title` when the intent names the product or when the schema has no title yet. Set `home` to a **primary** list screen id that should open first. Do not set `home` to a lookup list.
@@ -253,6 +257,46 @@ Do not change `name`. The SQLite column name stays the same.
 
 Use this when you replace a field with a new column. Do not hide `id`.
 
+## add_hooks
+
+Each item adds a Python hook file that runs on create, update, or delete. The host stores the file and runs it inside the same database transaction as the row change.
+
+{
+  "id": "notes_export",
+  "table": "notes",
+  "on": "create",
+  "code": "def run(ctx):\\n    row = ctx.row\\n    path = ctx.appdir / \\"exports\\" / f\\"{row['id']}.txt\\"\\n    path.parent.mkdir(parents=True, exist_ok=True)\\n    path.write_text(row.get('body') or '', encoding='utf-8')\\n"
+}
+
+`id` is snake_case and unique. `table` must exist in the schema or in `add_tables` in this diff. `on` is `create`, `update`, or `delete`.
+
+`code` is the full Python file body. It must define `run(ctx)`. Use `ctx.row` (dict), `ctx.row_before` (dict or None on update/delete), `ctx.table`, `ctx.event`, `ctx.appdir` (Path), `ctx.conn` (sqlite3 connection), and `ctx.cfg`.
+
+Use standard Python. The host does not sandbox hooks.
+
+Only add hooks when the intent asks for behavior on save or delete (export to file, side effects, custom logic). Do not add hooks for ordinary fields and screens.
+
+## update_hooks
+
+Replace an existing hook by `id`. Include the full new `code` string, not a patch.
+
+{
+  "id": "notes_export",
+  "code": "def run(ctx):\\n    ..."
+}
+
+Optional `"enabled": true` or `false`.
+
+Use `hook_sources` in the user message as the current code when the user asks to change a hook.
+
+## disable_hooks
+
+Array of existing hook ids. Sets `enabled` to false. Does not delete the file.
+
+## remove_hooks
+
+Array of existing hook ids. Deletes the registry entry and file.
+
 ## Forbidden
 
 Do not output keys other than those in the output object.
@@ -290,6 +334,8 @@ Examples:
 - If the join table already exists but the parent form has no `related`, use `update_screens`.
 - “Show open and done tasks” when `status` exists → list `scopes`, not a new table.
 - “Organize the book form into basics and notes” → form `groups`, not new tables.
+- “When I create a note, save the body to a file” → `add_hooks` on `notes` `create` if `notes` exists or add the table first in the same diff.
+- “Change the notes export hook to include the title” → `update_hooks` with full new code from `hook_sources`.
 
 If the user asks to delete data or wipe a table, do not emit destructive keys. Return `add_tables` empty and a `summary` that says the host cannot delete tables. Change nothing else.
 

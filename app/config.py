@@ -165,6 +165,7 @@ def ensure_appdir(appdir: Path | None = None) -> Path:
     path = appdir if appdir is not None else resolve_appdir()
     path.mkdir(parents=True, exist_ok=True)
     (path / "migrations").mkdir(exist_ok=True)
+    (path / "hooks").mkdir(exist_ok=True)
     _copy_if_missing(REPO_ROOT / ".env.example", path / ".env")
     _copy_if_missing(REPO_ROOT / "config.yaml.example", path / "conf.yaml")
     read_or_create_schema(path)

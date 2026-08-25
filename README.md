@@ -89,6 +89,16 @@ Optional seed without Ops:
 2. Run `python3 tools/seed_schema.py`
 3. Refresh Safari.
 
+### Hooks
+
+CRUD hooks are arbitrary Python that runs on **create**, **update**, or **delete**. Files live in `appdir/hooks/`. The registry is `appdir/hooks.json`.
+
+- **Create or change via Ops:** describe behavior in the intent box (for example, “when I create a note, write the body to exports”). The LLM returns `add_hooks` or `update_hooks` in the spec diff.
+- **Edit manually:** on the Ops page, use the Hooks table — Edit, change code, Save. Enable, Disable, or Delete from the same panel.
+- **Transaction:** if a hook raises, the row change rolls back.
+
+Hook files must define `run(ctx)` with `ctx.row`, `ctx.row_before`, `ctx.appdir`, `ctx.conn`, and related fields.
+
 ### Reset local data
 
 To wipe schema and rows but keep secrets and knobs, stop the server and delete these under the appdir:
@@ -111,7 +121,7 @@ Prefer the project virtualenv:
 Useful focused runs:
 
 ```
-.venv/bin/python -m unittest tests.test_screens tests.test_slice7 tests.test_slice8 -v
+.venv/bin/python -m unittest tests.test_hooks tests.test_screens tests.test_slice7 tests.test_slice8 -v
 ```
 
 ## Layout
