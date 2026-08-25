@@ -71,7 +71,9 @@ RELATED_KEYS = {"table", "fk", "title", "columns", "empty"}
 SCOPE_KEYS = {"id", "label", "column", "value"}
 GROUP_KEYS = {"id", "label", "columns"}
 SCOPE_FILTER_WIDGETS = {"select", "checkbox", "text", "number", "textarea"}
-HOOK_EVENTS = frozenset({"create", "update", "delete"})
+CRUD_HOOK_EVENTS = frozenset({"create", "update", "delete"})
+STARTUP_HOOK_EVENT = "startup"
+HOOK_EVENTS = CRUD_HOOK_EVENTS | {STARTUP_HOOK_EVENT}
 ADD_HOOK_KEYS = {"id", "table", "on", "code"}
 UPDATE_HOOK_KEYS = {"id", "code", "enabled"}
 
@@ -556,10 +558,15 @@ def _validate_hooks_diff(
         if hid in existing_ids or hid in new_ids:
             raise ValidationError("bad_hook", f"Hook id {hid} is not unique.")
         new_ids.add(hid)
-        if not _is_name(tname) or tname not in ptables:
-            raise ValidationError("bad_hook", f"Hook table {tname} is missing.")
         if event not in HOOK_EVENTS:
-            raise ValidationError("bad_hook", "Hook on must be create, update, or delete.")
+            raise ValidationError(
+                "bad_hook", "Hook on must be create, update, delete, or startup."
+            )
+        if event == STARTUP_HOOK_EVENT:
+            if tname and (not _is_name(tname) or tname not in ptables):
+                raise ValidationError("bad_hook", f"Hook table {tname} is missing.")
+        elif not _is_name(tname) or tname not in ptables:
+            raise ValidationError("bad_hook", f"Hook table {tname} is missing.")
         _check_hook_code(item.get("code"), filename=f"{hid}.py")
 
     for item in update_hooks:

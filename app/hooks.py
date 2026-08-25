@@ -17,7 +17,9 @@ from app.schema_validate import NAME_RE, ValidationError
 
 HOOKS_FILE = "hooks.json"
 HOOKS_DIR = "hooks"
-HOOK_EVENTS = frozenset({"create", "update", "delete"})
+CRUD_HOOK_EVENTS = frozenset({"create", "update", "delete"})
+STARTUP_HOOK_EVENT = "startup"
+ALL_HOOK_EVENTS = CRUD_HOOK_EVENTS | {STARTUP_HOOK_EVENT}
 EMPTY_REGISTRY: dict[str, Any] = {"version": 0, "hooks": []}
 
 ADD_HOOK_KEYS = {"id", "table", "on", "code"}
@@ -127,6 +129,19 @@ def resolve_hook_filename(
     event: str,
     hook_id: str,
 ) -> str:
+    if event == STARTUP_HOOK_EVENT:
+        preferred = f"{HOOKS_DIR}/{hook_id}.on_startup.py"
+        used = {
+            h.get("file")
+            for h in (registry.get("hooks") or [])
+            if isinstance(h, dict)
+        }
+        if preferred not in used:
+            return preferred
+        alt = f"{HOOKS_DIR}/startup_{hook_id}.py"
+        if alt not in used:
+            return alt
+        raise ValidationError("bad_hook", f"No free hook filename for {hook_id}.")
     preferred = f"{HOOKS_DIR}/{table}.on_{event}.py"
     used = {
         h.get("file")
@@ -152,10 +167,10 @@ def _hook_by_id(registry: dict[str, Any], hook_id: str) -> dict[str, Any] | None
 class HookContext:
     appdir: Path
     cfg: AppConfig
-    table: str
     event: str
-    row: dict[str, Any]
-    conn: sqlite3.Connection
+    table: str = ""
+    row: dict[str, Any] | None = None
+    conn: sqlite3.Connection | None = None
     row_before: dict[str, Any] | None = None
     depth: int = 0
 
@@ -189,7 +204,7 @@ def run_hooks(
 ) -> None:
     if depth > 0:
         return
-    if event not in HOOK_EVENTS:
+    if event not in CRUD_HOOK_EVENTS:
         return
     registry = read_registry(cfg.appdir)
     schema_version = 0
@@ -213,8 +228,8 @@ def run_hooks(
         ctx = HookContext(
             appdir=cfg.appdir,
             cfg=cfg,
-            table=table,
             event=event,
+            table=table,
             row=row,
             row_before=row_before,
             conn=conn,
@@ -250,6 +265,54 @@ def run_hooks(
         )
 
 
+def run_startup_hooks(cfg: AppConfig) -> None:
+    """Run startup hooks once. Errors are logged; the server keeps starting."""
+    registry = read_registry(cfg.appdir)
+    schema_version = 0
+    try:
+        from app.config import read_or_create_schema
+
+        schema_version = int(read_or_create_schema(cfg.appdir).get("version") or 0)
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+    for item in registry.get("hooks") or []:
+        if not isinstance(item, dict):
+            continue
+        if item.get("on") != STARTUP_HOOK_EVENT:
+            continue
+        if item.get("enabled") is False:
+            continue
+        hook_id = str(item.get("id") or "")
+        rel = item.get("file")
+        if not hook_id or not isinstance(rel, str):
+            continue
+        ctx = HookContext(appdir=cfg.appdir, cfg=cfg, event=STARTUP_HOOK_EVENT)
+        try:
+            run_fn = _load_run(cfg.appdir, hook_id, rel)
+            run_fn(ctx)
+        except Exception as exc:
+            tb = traceback.format_exc()
+            emit(
+                cfg,
+                event="hook.startup.fail",
+                component="hooks",
+                msg=str(exc),
+                ok=False,
+                level="error",
+                schema_version=schema_version,
+                detail={"hook_id": hook_id, "event": STARTUP_HOOK_EVENT, "trace": tb[-500:]},
+            )
+            continue
+        emit(
+            cfg,
+            event="hook.startup.ok",
+            component="hooks",
+            msg=f"Ran startup hook {hook_id}.",
+            schema_version=schema_version,
+            detail={"hook_id": hook_id, "event": STARTUP_HOOK_EVENT},
+        )
+
+
 def apply_hook_diff(cfg: AppConfig, diff: dict[str, Any]) -> list[dict[str, str]]:
     """Apply hook-related keys from a spec diff. Returns change list for API preview."""
     changes: list[dict[str, str]] = []
@@ -258,14 +321,16 @@ def apply_hook_diff(cfg: AppConfig, diff: dict[str, Any]) -> list[dict[str, str]
 
     for item in diff.get("add_hooks") or []:
         hid = item["id"]
-        rel = resolve_hook_filename(registry, item["table"], item["on"], hid)
+        event = item["on"]
+        table = item.get("table") or ""
+        rel = resolve_hook_filename(registry, table, event, hid)
         path = _safe_hook_path(cfg.appdir, rel)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(item["code"], encoding="utf-8")
         entry = {
             "id": hid,
-            "table": item["table"],
-            "on": item["on"],
+            "table": table,
+            "on": event,
             "file": rel,
             "enabled": True,
         }

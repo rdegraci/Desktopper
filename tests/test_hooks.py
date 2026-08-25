@@ -7,7 +7,7 @@ from pathlib import Path
 from app.config import load_config, read_or_create_schema
 from app.crud import CrudError, insert_row
 from app.engine import apply_diff
-from app.hooks import get_hook, read_registry
+from app.hooks import get_hook, read_registry, run_startup_hooks
 from app.schema_validate import ValidationError, validate_diff
 from app.server import create_app
 
@@ -69,6 +69,16 @@ UPDATED_HOOK_CODE = """def run(ctx):
     path = ctx.appdir / "exports" / f"{row['id']}-updated.txt"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(row.get("body") or "", encoding="utf-8")
+"""
+
+STARTUP_HOOK_CODE = """def run(ctx):
+    (ctx.appdir / "exports").mkdir(parents=True, exist_ok=True)
+    marker = ctx.appdir / "exports" / ".startup-ran"
+    marker.write_text("ok", encoding="utf-8")
+"""
+
+FAIL_STARTUP_HOOK_CODE = """def run(ctx):
+    raise RuntimeError("startup failed on purpose")
 """
 
 
@@ -228,6 +238,94 @@ class HooksTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         body = res.get_json()
         self.assertEqual(body["hooks_changed"], [{"id": "notes_export", "action": "disable"}])
+
+
+class StartupHooksTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.appdir = Path(self.tmp.name)
+        os.environ["DESKTOPPER_APPDIR"] = str(self.appdir)
+        (self.appdir / ".env").write_text("LLM_API_KEY=test\n", encoding="utf-8")
+        self.cfg = load_config(self.appdir)
+
+    def tearDown(self) -> None:
+        os.environ.pop("DESKTOPPER_APPDIR", None)
+        self.tmp.cleanup()
+
+    def test_add_startup_hook(self) -> None:
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Startup hook.",
+                "add_hooks": [
+                    {
+                        "id": "ensure_exports",
+                        "on": "startup",
+                        "code": STARTUP_HOOK_CODE,
+                    }
+                ],
+            },
+        )
+        hook = get_hook(self.cfg, "ensure_exports")
+        self.assertEqual(hook["on"], "startup")
+        self.assertEqual(hook["table"], "")
+
+    def test_run_startup_hooks_creates_marker(self) -> None:
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Startup hook.",
+                "add_hooks": [
+                    {
+                        "id": "ensure_exports",
+                        "on": "startup",
+                        "code": STARTUP_HOOK_CODE,
+                    }
+                ],
+            },
+        )
+        run_startup_hooks(self.cfg)
+        marker = self.appdir / "exports" / ".startup-ran"
+        self.assertTrue(marker.is_file())
+        self.assertEqual(marker.read_text(encoding="utf-8"), "ok")
+
+    def test_startup_hook_failure_does_not_raise(self) -> None:
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Bad startup hook.",
+                "add_hooks": [
+                    {
+                        "id": "bad_startup",
+                        "on": "startup",
+                        "code": FAIL_STARTUP_HOOK_CODE,
+                    }
+                ],
+            },
+        )
+        run_startup_hooks(self.cfg)
+
+    def test_disabled_startup_hook_skipped(self) -> None:
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Startup hook.",
+                "add_hooks": [
+                    {
+                        "id": "ensure_exports",
+                        "on": "startup",
+                        "code": STARTUP_HOOK_CODE,
+                    }
+                ],
+            },
+        )
+        apply_diff(
+            self.cfg,
+            {"summary": "Disable.", "disable_hooks": ["ensure_exports"]},
+        )
+        run_startup_hooks(self.cfg)
+        marker = self.appdir / "exports" / ".startup-ran"
+        self.assertFalse(marker.is_file())
 
 
 class HooksOpsUiTests(unittest.TestCase):

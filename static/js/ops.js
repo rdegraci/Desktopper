@@ -128,7 +128,7 @@
         return cell;
       }
       tr.appendChild(td(hook.id || ""));
-      tr.appendChild(td(hook.table || ""));
+      tr.appendChild(td(hook.table || (hook.on === "startup" ? "—" : "")));
       tr.appendChild(td(hook.on || ""));
       tr.appendChild(td(hook.enabled === false ? "no" : "yes"));
       var actionCell = document.createElement("td");
@@ -170,13 +170,11 @@
         }
         currentHook = result.body;
         if (hookEditorTitle) {
-          hookEditorTitle.textContent =
-            currentHook.id +
-            " (" +
-            currentHook.table +
-            " / " +
-            currentHook.on +
-            ")";
+          var tableLabel =
+            currentHook.on === "startup"
+              ? "startup"
+              : currentHook.table + " / " + currentHook.on;
+          hookEditorTitle.textContent = currentHook.id + " (" + tableLabel + ")";
         }
         if (hookCodeEl) {
           hookCodeEl.value = currentHook.code || "";

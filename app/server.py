@@ -23,6 +23,7 @@ from app.hooks import (
     get_hook,
     list_hooks_metadata,
     remove_hook,
+    run_startup_hooks,
     save_hook_code,
     set_hook_enabled,
 )
@@ -319,6 +320,8 @@ def main() -> None:
     except (BindRefusedError, UnknownLlmProviderError) as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
+    setup_logging(cfg)
+    run_startup_hooks(cfg)
     app = create_app()
     log_server_start(cfg)
     print(f"http://{cfg.bind}:{cfg.port}/", flush=True)

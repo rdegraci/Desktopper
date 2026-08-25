@@ -259,7 +259,9 @@ Use this when you replace a field with a new column. Do not hide `id`.
 
 ## add_hooks
 
-Each item adds a Python hook file that runs on create, update, or delete. The host stores the file and runs it inside the same database transaction as the row change.
+Each item adds a Python hook file. CRUD hooks run on create, update, or delete inside the same database transaction as the row change. Startup hooks run once when the Python server starts.
+
+CRUD example:
 
 {
   "id": "notes_export",
@@ -268,13 +270,23 @@ Each item adds a Python hook file that runs on create, update, or delete. The ho
   "code": "def run(ctx):\\n    row = ctx.row\\n    path = ctx.appdir / \\"exports\\" / f\\"{row['id']}.txt\\"\\n    path.parent.mkdir(parents=True, exist_ok=True)\\n    path.write_text(row.get('body') or '', encoding='utf-8')\\n"
 }
 
-`id` is snake_case and unique. `table` must exist in the schema or in `add_tables` in this diff. `on` is `create`, `update`, or `delete`.
+Startup example:
 
-`code` is the full Python file body. It must define `run(ctx)`. Use `ctx.row` (dict), `ctx.row_before` (dict or None on update/delete), `ctx.table`, `ctx.event`, `ctx.appdir` (Path), `ctx.conn` (sqlite3 connection), and `ctx.cfg`.
+{
+  "id": "ensure_exports",
+  "on": "startup",
+  "code": "def run(ctx):\\n    (ctx.appdir / 'exports').mkdir(parents=True, exist_ok=True)\\n"
+}
 
-Use standard Python. The host does not sandbox hooks.
+`id` is snake_case and unique. `on` is `create`, `update`, `delete`, or `startup`.
 
-Only add hooks when the intent asks for behavior on save or delete (export to file, side effects, custom logic). Do not add hooks for ordinary fields and screens.
+For CRUD hooks, `table` must exist in the schema or in `add_tables` in this diff. Omit `table` for startup hooks.
+
+`code` is the full Python file body. It must define `run(ctx)`. CRUD hooks use `ctx.row`, `ctx.row_before`, `ctx.table`, `ctx.conn`, `ctx.appdir`, and `ctx.cfg`. Startup hooks use `ctx.appdir` and `ctx.cfg` only.
+
+Use standard Python. The host does not sandbox hooks. Startup hook errors are logged; the server still starts. CRUD hook errors roll back the row change.
+
+Only add hooks when the intent asks for behavior on save, delete, or server start. Do not add hooks for ordinary fields and screens.
 
 ## update_hooks
 
@@ -335,6 +347,7 @@ Examples:
 - “Show open and done tasks” when `status` exists → list `scopes`, not a new table.
 - “Organize the book form into basics and notes” → form `groups`, not new tables.
 - “When I create a note, save the body to a file” → `add_hooks` on `notes` `create` if `notes` exists or add the table first in the same diff.
+- “Ensure exports folder exists when the app starts” → `add_hooks` with `"on": "startup"`, no `table`.
 - “Change the notes export hook to include the title” → `update_hooks` with full new code from `hook_sources`.
 
 If the user asks to delete data or wipe a table, do not emit destructive keys. Return `add_tables` empty and a `summary` that says the host cannot delete tables. Change nothing else.

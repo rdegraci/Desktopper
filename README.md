@@ -91,13 +91,13 @@ Optional seed without Ops:
 
 ### Hooks
 
-CRUD hooks are arbitrary Python that runs on **create**, **update**, or **delete**. Files live in `appdir/hooks/`. The registry is `appdir/hooks.json`.
+CRUD hooks are arbitrary Python that runs on **create**, **update**, or **delete**. **Startup** hooks run once when the Python server starts. Files live in `appdir/hooks/`. The registry is `appdir/hooks.json`.
 
 - **Create or change via Ops:** describe behavior in the intent box (for example, “when I create a note, write the body to exports”). The LLM returns `add_hooks` or `update_hooks` in the spec diff.
 - **Edit manually:** on the Ops page, use the Hooks table — Edit, change code, Save. Enable, Disable, or Delete from the same panel.
-- **Transaction:** if a hook raises, the row change rolls back.
+- **Transaction:** if a CRUD hook raises, the row change rolls back. Startup hook errors are logged; the server still starts.
 
-Hook files must define `run(ctx)` with `ctx.row`, `ctx.row_before`, `ctx.appdir`, `ctx.conn`, and related fields.
+Hook files must define `run(ctx)`. CRUD hooks use `ctx.row`, `ctx.conn`, and related fields. Startup hooks use `ctx.appdir` and `ctx.cfg`.
 
 ### Reset local data
 
