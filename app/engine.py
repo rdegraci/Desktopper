@@ -10,11 +10,12 @@ from pathlib import Path
 from typing import Any
 
 from app.config import AppConfig, read_or_create_schema, schema_path
+from app.final_schema import apply_final_side_effects, merge_final_schema
 from app.hooks import apply_hook_diff, read_registry
+from app.db_paths import DB_NAME, db_path, quote_ident as _quote_ident
 from app.log import emit
 from app.schema_validate import SYSTEM_COLUMNS, ValidationError, validate_diff
 
-DB_NAME = "app.sqlite"
 BACKUP_NAME = "schema.json.bak"
 
 
@@ -23,14 +24,6 @@ class EngineError(Exception):
         super().__init__(msg)
         self.error_code = error_code
         self.msg = msg
-
-
-def db_path(appdir: Path) -> Path:
-    return appdir / DB_NAME
-
-
-def _quote_ident(name: str) -> str:
-    return '"' + name.replace('"', "") + '"'
 
 
 def _sql_type(col: dict[str, Any]) -> str:
@@ -189,6 +182,8 @@ def _merge_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str, Any
             if col.get("name") == item["column"]:
                 col["hidden"] = True
 
+    out = merge_final_schema(out, diff)
+
     out["version"] = int(out.get("version") or 0) + 1
     return out
 
@@ -275,6 +270,7 @@ def apply_diff(
     merged = _merge_schema(schema, diff)
     schema_file.write_text(json.dumps(merged, indent=2) + "\n", encoding="utf-8")
     hooks_changed = apply_hook_diff(cfg, diff)
+    apply_final_side_effects(cfg, diff)
     summary = str(diff.get("summary") or "Applied additive spec.")
     _write_migration(cfg.appdir, int(merged["version"]), summary, diff)
     emit(

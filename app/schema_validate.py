@@ -21,6 +21,19 @@ ALLOWED_DIFF_KEYS = {
     "update_hooks",
     "disable_hooks",
     "remove_hooks",
+    "add_formulas",
+    "add_rules",
+    "disable_rules",
+    "add_roles",
+    "add_grants",
+    "add_import_profiles",
+    "add_layouts",
+    "add_reminders",
+    "update_reminders",
+    "disable_reminders",
+    "add_jobs",
+    "disable_jobs",
+    "update_sync",
 }
 
 FORBIDDEN_KEY_HINTS = ("drop", "rename")
@@ -514,6 +527,10 @@ def validate_diff(
         remove_hooks,
         hooks_registry or {"hooks": []},
     )
+
+    from app.final_schema import validate_final_diff
+
+    validate_final_diff(_project_schema(schema, diff), diff)
 
 
 def _check_hook_code(code: Any, *, filename: str) -> None:
