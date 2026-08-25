@@ -22,8 +22,50 @@
         </form>
         <a class="nav-link" href="/ops" target="_blank" rel="noopener">Ops</a>
         <span class="badge bg-danger" id="notices-badge" hidden>0</span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="login-toggle">
+          Login
+        </button>
       </div>
     </nav>
+    <div class="container py-2" id="login-panel" hidden>
+      <form id="login-form" class="row g-2 align-items-end">
+        <div class="col-auto">
+          <label class="form-label" for="login-name">User</label>
+          <input class="form-control form-control-sm" id="login-name" autocomplete="username" />
+        </div>
+        <div class="col-auto">
+          <label class="form-label" for="login-password">Password</label>
+          <input
+            class="form-control form-control-sm"
+            id="login-password"
+            type="password"
+            autocomplete="current-password"
+          />
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-sm btn-primary">Sign in</button>
+          <button type="button" class="btn btn-sm btn-link" id="logout-btn" hidden>
+            Sign out
+          </button>
+        </div>
+        <div class="col-12">
+          <p class="text-danger small mb-0" id="login-error" hidden></p>
+        </div>
+      </form>
+    </div>
+    <div class="container py-2" id="import-panel" hidden>
+      <div class="d-flex flex-wrap align-items-end gap-2">
+        <div>
+          <label class="form-label" for="import-profile">CSV import</label>
+          <select class="form-select form-select-sm" id="import-profile"></select>
+        </div>
+        <label class="btn btn-sm btn-outline-secondary mb-0">
+          Choose file
+          <input type="file" id="import-file" accept=".csv,text/csv" hidden />
+        </label>
+      </div>
+      <p class="small text-muted mb-0 mt-1" id="import-status"></p>
+    </div>
     <div class="container py-2">
       <div id="global-hits" class="list-group mb-2" hidden></div>
       <p id="error" class="text-danger" hidden></p>

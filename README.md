@@ -12,6 +12,8 @@ The MVP works end to end: schema engine, CRUD, search, Ops intent chat, and the 
 
 Screen language covers related child lists, belongs-to parent links, list scopes, form field groups, empty states, and primary vs lookup tables.
 
+The **FINAL** shape adds reminders and scheduling, computed formulas, automation rules, auth with column grants, CSV import profiles, peer sync, and declarative home layouts (metrics, kanban, calendar, and more). Ops still applies schema via intent; only **hooks** and **reminders** have direct CRUD panels on Ops.
+
 ## Requirements
 
 - macOS
@@ -99,6 +101,40 @@ CRUD hooks are arbitrary Python that runs on **create**, **update**, or **delete
 
 Hook files must define `run(ctx)`. CRUD hooks use `ctx.row`, `ctx.conn`, and related fields. Startup hooks use `ctx.appdir` and `ctx.cfg`.
 
+### Reminders and scheduling
+
+Reminders fire on a schedule (cron-like or one-shot). The background scheduler runs in the Python process and writes **notices** when a reminder is due. On Home, the navbar badge shows unread notices; layout widgets can list them with snooze and dismiss actions.
+
+- **Create or change via Ops:** describe the reminder in the intent box (for example, “remind me every Monday to review open tasks”). The LLM returns `add_reminders` or `update_reminders` in the spec diff.
+- **Ops panel:** use the Reminders table to enable, disable, edit, or delete reminders directly.
+- **API:** `GET/POST/PATCH/DELETE /api/reminders` plus `/snooze` and `/dismiss` on individual reminders.
+
+### Formulas and rules
+
+**Formulas** are named expressions (aggregates, dates, row math) declared in `add_formulas`. List and layout views can reference them; row formulas run on read with grant-aware column hiding.
+
+**Rules** run on write or on a schedule (`add_rules`). They can send email, insert notices, or patch rows when conditions match.
+
+Describe both in Ops intent; there is no separate Ops editor for formulas or rules.
+
+### Auth
+
+Users and roles live in the host database. Column **grants** in the schema hide fields per role. Home has a **Login** control in the navbar (`POST /api/login`, session cookie). Unauthenticated reads use the default guest role.
+
+Create additional users with `POST /api/users` (owner role only).
+
+### CSV import
+
+**Import profiles** map CSV columns to tables (`add_import_profiles`). When profiles exist, Home shows a CSV import control. Upload hits `POST /api/import/{profile_id}` with multipart form field `file`.
+
+### Sync
+
+Peer sync logs row changes to `_sync_events`. On Ops, **Sync export** writes events to the appdir; **Sync import** applies a JSON batch from another replica (`GET /api/sync/export`, `POST /api/sync/import`). Conflict resolution is last-write-wins on configured tables.
+
+### Layouts
+
+`add_layouts` defines the home dashboard: widgets such as **metric**, **notices**, **reminders**, **text**, **table** links, **kanban**, and **calendar**. Home renders the layout named by `app.home` when it points at a layout id instead of a list screen.
+
 ### Reset local data
 
 To wipe schema and rows but keep secrets and knobs, stop the server and delete these under the appdir:
@@ -121,7 +157,7 @@ Prefer the project virtualenv:
 Useful focused runs:
 
 ```
-.venv/bin/python -m unittest tests.test_hooks tests.test_screens tests.test_slice7 tests.test_slice8 -v
+.venv/bin/python -m unittest tests.test_hooks tests.test_screens tests.test_slice7 tests.test_slice8 tests.test_final -v
 ```
 
 ## Layout

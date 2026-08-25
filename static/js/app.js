@@ -1202,7 +1202,155 @@
     go("#list/" + first.table);
   }
 
+  function drawImportPanel() {
+    var panel = document.getElementById("import-panel");
+    var select = document.getElementById("import-profile");
+    if (!panel || !select) {
+      return;
+    }
+    var profiles = (schema && schema.import_profiles) || [];
+    while (select.firstChild) {
+      select.removeChild(select.firstChild);
+    }
+    if (!profiles.length) {
+      panel.hidden = true;
+      return;
+    }
+    profiles.forEach(function (profile) {
+      var opt = document.createElement("option");
+      opt.value = profile.id;
+      opt.textContent = profile.label || profile.id;
+      select.appendChild(opt);
+    });
+    panel.hidden = false;
+  }
+
+  function bindImport() {
+    var fileInput = document.getElementById("import-file");
+    var statusEl = document.getElementById("import-status");
+    if (!fileInput) {
+      return;
+    }
+    fileInput.addEventListener("change", function () {
+      var file = fileInput.files && fileInput.files[0];
+      var select = document.getElementById("import-profile");
+      if (!file || !select || !select.value) {
+        return;
+      }
+      if (statusEl) {
+        statusEl.textContent = "Importing…";
+      }
+      var form = new FormData();
+      form.append("file", file);
+      fetch("/api/import/" + encodeURIComponent(select.value), {
+        method: "POST",
+        body: form,
+        credentials: "same-origin",
+      })
+        .then(function (res) {
+          return res.json().then(function (body) {
+            return { ok: res.ok, body: body };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            throw new Error((result.body && result.body.error) || "Import failed.");
+          }
+          if (statusEl) {
+            statusEl.textContent =
+              "Imported " +
+              String(result.body.ok || 0) +
+              " rows, " +
+              String(result.body.fail || 0) +
+              " failed.";
+          }
+          route();
+        })
+        .catch(function (err) {
+          if (statusEl) {
+            statusEl.textContent = err.message || "Import failed.";
+          }
+        });
+      fileInput.value = "";
+    });
+  }
+
+  function bindLogin() {
+    var toggle = document.getElementById("login-toggle");
+    var panel = document.getElementById("login-panel");
+    var form = document.getElementById("login-form");
+    var errEl = document.getElementById("login-error");
+    var logoutBtn = document.getElementById("logout-btn");
+
+    function showLoginErr(msg) {
+      if (!errEl) {
+        return;
+      }
+      if (!msg) {
+        errEl.hidden = true;
+        errEl.textContent = "";
+        return;
+      }
+      errEl.hidden = false;
+      errEl.textContent = msg;
+    }
+
+    if (toggle && panel) {
+      toggle.addEventListener("click", function () {
+        panel.hidden = !panel.hidden;
+      });
+    }
+
+    if (form) {
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        showLoginErr("");
+        var name = document.getElementById("login-name");
+        var password = document.getElementById("login-password");
+        fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            name: name ? name.value : "",
+            password: password ? password.value : "",
+          }),
+        })
+          .then(function (res) {
+            return res.json().then(function (body) {
+              return { ok: res.ok, body: body };
+            });
+          })
+          .then(function (result) {
+            if (!result.ok) {
+              showLoginErr((result.body && result.body.error) || "Login failed.");
+              return;
+            }
+            if (panel) {
+              panel.hidden = true;
+            }
+            if (logoutBtn) {
+              logoutBtn.hidden = false;
+            }
+          })
+          .catch(function () {
+            showLoginErr("Login failed.");
+          });
+      });
+    }
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", function () {
+        fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
+          logoutBtn.hidden = true;
+        });
+      });
+    }
+  }
+
   function boot() {
+    bindLogin();
+    bindImport();
     bindGlobalSearch();
     var ok = document.getElementById("confirm-ok");
     if (ok) {
@@ -1240,6 +1388,7 @@
       .then(function (data) {
         schema = data;
         drawNav();
+        drawImportPanel();
         route();
         refreshNotices();
         setInterval(refreshNotices, 30000);
