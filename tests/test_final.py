@@ -379,6 +379,30 @@ class FinalTests(unittest.TestCase):
             )
         self.assertIn("layout_id is only allowed", str(ctx.exception))
 
+    def test_add_columns_merges_once(self):
+        schema = read_or_create_schema(self.cfg.appdir)
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "One column.",
+                "add_columns": [
+                    {
+                        "table": "time_entries",
+                        "column": {
+                            "name": "billable",
+                            "type": "INTEGER",
+                            "label": "Billable",
+                            "nullable": True,
+                            "widget": "checkbox",
+                        },
+                    }
+                ],
+            },
+        )
+        merged = read_or_create_schema(self.cfg.appdir)
+        names = [c["name"] for c in merged["tables"]["time_entries"]["columns"]]
+        self.assertEqual(names.count("billable"), 1)
+
     def test_add_columns_unknown_keys_lists_them(self):
         schema = read_or_create_schema(self.cfg.appdir)
         with self.assertRaises(ValidationError) as ctx:
