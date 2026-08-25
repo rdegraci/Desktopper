@@ -25,6 +25,15 @@ EMPTY_SCHEMA = {
     "app": {"title": "Desktopper"},
     "tables": {},
     "screens": [],
+    "formulas": [],
+    "rules": [],
+    "roles": [],
+    "grants": [],
+    "import_profiles": [],
+    "layouts": [],
+    "reminders": [],
+    "jobs": [],
+    "sync": {"tables": [], "label": "Home"},
 }
 
 
@@ -154,6 +163,22 @@ def read_or_create_schema(appdir: Path) -> dict:
     data["app"].setdefault("title", "Desktopper")
     data.setdefault("tables", {})
     data.setdefault("screens", [])
+    for key, default in (
+        ("formulas", []),
+        ("rules", []),
+        ("roles", []),
+        ("grants", []),
+        ("import_profiles", []),
+        ("layouts", []),
+        ("reminders", []),
+        ("jobs", []),
+    ):
+        data.setdefault(key, default if isinstance(default, list) else default)
+        if not isinstance(data[key], list):
+            data[key] = []
+    data.setdefault("sync", {"tables": [], "label": "Home"})
+    if not isinstance(data.get("sync"), dict):
+        data["sync"] = {"tables": [], "label": "Home"}
     if not isinstance(data["tables"], dict):
         data["tables"] = {}
     if not isinstance(data["screens"], list):
