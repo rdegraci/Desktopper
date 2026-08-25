@@ -138,6 +138,9 @@
         query: query,
       };
     }
+    if (parts[0] === "layout" && parts[1]) {
+      return { kind: "layout", id: parts[1], query: query };
+    }
     return { kind: "home", query: query };
   }
 
@@ -177,6 +180,17 @@
         text: screen.title || screen.table,
       });
       nav.appendChild(a);
+    });
+    (schema.screens || []).forEach(function (screen) {
+      if (screen && screen.type === "layout" && screen.layout_id) {
+        nav.appendChild(
+          el("a", {
+            className: "nav-link",
+            href: "#layout/" + screen.layout_id,
+            text: screen.title || screen.layout_id,
+          })
+        );
+      }
     });
     var lookups = lookupNavScreens();
     if (lookups.length) {
@@ -1107,6 +1121,52 @@
       });
   }
 
+  function refreshNotices() {
+    var badge = document.getElementById("notices-badge");
+    if (!badge) {
+      return;
+    }
+    fetch("/api/notices?unread=1")
+      .then(function (res) {
+        return res.json();
+      })
+      .then(function (data) {
+        var count = (data.notices || []).length;
+        if (count > 0) {
+          badge.hidden = false;
+          badge.textContent = String(count);
+        } else {
+          badge.hidden = true;
+        }
+      })
+      .catch(function () {});
+  }
+
+  function drawLayout(layoutId) {
+    var layouts = (schema && schema.layouts) || [];
+    var layout = null;
+    var i;
+    for (i = 0; i < layouts.length; i++) {
+      if (layouts[i] && layouts[i].id === layoutId) {
+        layout = layouts[i];
+        break;
+      }
+    }
+    drawEmpty(false);
+    var main = document.getElementById("main");
+    if (!main || !layout) {
+      showError("Layout not found.");
+      return;
+    }
+    while (main.firstChild) {
+      main.removeChild(main.firstChild);
+    }
+    if (window.DesktopperLayout) {
+      window.DesktopperLayout.render(layout, main);
+    }
+    main.hidden = false;
+  }
+
   function route() {
     showError("");
     var empty = listScreens().length === 0;
@@ -1121,6 +1181,10 @@
     }
     if (loc.kind === "form") {
       drawForm(loc.table, loc.id, loc.query);
+      return;
+    }
+    if (loc.kind === "layout") {
+      drawLayout(loc.id);
       return;
     }
     var homeId = schema && schema.app && schema.app.home;
@@ -1177,6 +1241,8 @@
         schema = data;
         drawNav();
         route();
+        refreshNotices();
+        setInterval(refreshNotices, 30000);
       })
       .catch(function (err) {
         showError(err.message);

@@ -481,4 +481,152 @@
         });
     });
   }
+
+  var remindersTbody = document.getElementById("reminders-tbody");
+  var reminderEditor = document.getElementById("reminder-editor");
+  var reminderNewBtn = document.getElementById("reminder-new");
+  var reminderSaveBtn = document.getElementById("reminder-save");
+  var reminderDisableBtn = document.getElementById("reminder-disable");
+  var reminderCancelBtn = document.getElementById("reminder-cancel");
+  var reminderEditorError = document.getElementById("reminder-editor-error");
+  var schedulerStatusEl = document.getElementById("scheduler-status");
+  var editingReminderId = null;
+
+  function showReminderError(msg) {
+    if (!reminderEditorError) return;
+    if (!msg) {
+      reminderEditorError.hidden = true;
+      reminderEditorError.textContent = "";
+      return;
+    }
+    reminderEditorError.hidden = false;
+    reminderEditorError.textContent = msg;
+  }
+
+  function loadReminders() {
+    if (!remindersTbody) return;
+    fetch("/api/reminders")
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        remindersTbody.textContent = "";
+        (data.reminders || []).forEach(function (rem) {
+          var tr = document.createElement("tr");
+          function td(text) {
+            var cell = document.createElement("td");
+            cell.textContent = text;
+            return cell;
+          }
+          tr.appendChild(td(rem.id || ""));
+          tr.appendChild(td(rem.title || ""));
+          tr.appendChild(td(rem.schedule_summary || ""));
+          tr.appendChild(td(rem.next_run_at || "—"));
+          tr.appendChild(td(rem.enabled === false ? "off" : "on"));
+          var actionCell = document.createElement("td");
+          var editBtn = document.createElement("button");
+          editBtn.type = "button";
+          editBtn.className = "btn btn-sm btn-link";
+          editBtn.textContent = "Edit";
+          editBtn.addEventListener("click", function () {
+            openReminderEditor(rem);
+          });
+          actionCell.appendChild(editBtn);
+          tr.appendChild(actionCell);
+          remindersTbody.appendChild(tr);
+        });
+      });
+  }
+
+  function openReminderEditor(rem) {
+    editingReminderId = rem ? rem.id : null;
+    if (reminderEditor) reminderEditor.hidden = false;
+    document.getElementById("reminder-id").value = rem ? rem.id : "";
+    document.getElementById("reminder-id").disabled = !!rem;
+    document.getElementById("reminder-title").value = rem ? rem.title : "";
+    document.getElementById("reminder-body").value = rem ? (rem.body || "") : "";
+    var schedule = (rem && rem.schedule) || { kind: "once" };
+    document.getElementById("reminder-kind").value = schedule.kind || "once";
+    var val = "";
+    if (schedule.kind === "once") val = schedule.at || "";
+    else if (schedule.kind === "daily" || schedule.kind === "weekly") val = schedule.time || "";
+    else if (schedule.kind === "interval") val = String(schedule.every_seconds || 3600);
+    document.getElementById("reminder-schedule-val").value = val;
+    showReminderError("");
+  }
+
+  function buildReminderBody() {
+    var kind = document.getElementById("reminder-kind").value;
+    var val = document.getElementById("reminder-schedule-val").value.trim();
+    var schedule = { kind: kind };
+    if (kind === "once") schedule.at = val;
+    else if (kind === "daily") schedule.time = val;
+    else if (kind === "weekly") { schedule.time = val; schedule.weekday = 0; }
+    else if (kind === "interval") schedule.every_seconds = parseInt(val, 10) || 3600;
+    return {
+      id: document.getElementById("reminder-id").value.trim(),
+      title: document.getElementById("reminder-title").value.trim(),
+      body: document.getElementById("reminder-body").value.trim(),
+      enabled: true,
+      schedule: schedule,
+      action: { kind: "notify" },
+    };
+  }
+
+  if (reminderNewBtn) {
+    reminderNewBtn.addEventListener("click", function () { openReminderEditor(null); });
+  }
+  if (reminderCancelBtn) {
+    reminderCancelBtn.addEventListener("click", function () {
+      if (reminderEditor) reminderEditor.hidden = true;
+      editingReminderId = null;
+    });
+  }
+  if (reminderSaveBtn) {
+    reminderSaveBtn.addEventListener("click", function () {
+      var body = buildReminderBody();
+      var url = editingReminderId ? "/api/reminders/" + encodeURIComponent(editingReminderId) : "/api/reminders";
+      var method = editingReminderId ? "PATCH" : "POST";
+      if (!editingReminderId && !body.id) {
+        showReminderError("Id is required.");
+        return;
+      }
+      fetch(url, {
+        method: method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      })
+        .then(function (res) {
+          return res.json().then(function (data) {
+            if (!res.ok) throw new Error(data.error || res.statusText);
+            return data;
+          });
+        })
+        .then(function () {
+          if (reminderEditor) reminderEditor.hidden = true;
+          loadReminders();
+        })
+        .catch(function (err) { showReminderError(err.message); });
+    });
+  }
+  if (reminderDisableBtn) {
+    reminderDisableBtn.addEventListener("click", function () {
+      if (!editingReminderId) return;
+      fetch("/api/reminders/" + encodeURIComponent(editingReminderId) + "/dismiss", { method: "POST" })
+        .then(function () {
+          if (reminderEditor) reminderEditor.hidden = true;
+          loadReminders();
+        });
+    });
+  }
+
+  function loadSchedulerStatus() {
+    if (!schedulerStatusEl) return;
+    fetch("/api/scheduler/status")
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        schedulerStatusEl.textContent = "Scheduler last tick: " + (data.last_tick_at || "never");
+      });
+  }
+
+  loadReminders();
+  loadSchedulerStatus();
 })();
