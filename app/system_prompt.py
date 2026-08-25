@@ -367,6 +367,23 @@ Use human labels with spaces and capitals. Use snake_case only in `name` and `id
 `summary` is for the user. State what tables and fields you added. Do not mention JSON keys.
 """.strip() + "\n"
 
+COLUMN_RULES_SUPPLEMENT = """
+## Column fields (tables and add_columns)
+
+Allowed `type` values only: `INTEGER`, `REAL`, `TEXT`. Use exact uppercase spelling. Never use `string`, `boolean`, `url`, `date`, `datetime`, `varchar`, or other names.
+
+Allowed `widget` values: `text`, `textarea`, `select`, `number`, `checkbox`, `fk`.
+
+- `select` requires `enum`: an array of short strings.
+- `fk` requires `"fk": { "table": "...", "column": "id", "display": "name" }` and `type` `INTEGER`.
+- `checkbox` uses `type` `INTEGER` (stores 0 or 1).
+- `number` uses `INTEGER` or `REAL`.
+- `textarea` uses `type` `TEXT`.
+- URLs, notes, names, and ISO dates/datetimes: `type` `TEXT`, `widget` `text` (or `textarea` for long notes). Put date meaning in the column `label`.
+
+`nullable` is a boolean. Do not hide a new column unless the intent asks for a technical field.
+""".strip()
+
 
 def _hooks_supplement() -> str:
     start = SYSTEM_PROMPT.find("## add_hooks")
@@ -388,5 +405,8 @@ def load_system_prompt() -> str:
         text = path.read_text(encoding="utf-8")
         if "---" in text:
             text = text.split("---", 1)[1]
-        return text.strip() + _hooks_supplement() + "\n"
+        text = text.strip()
+        if "Allowed `type` values only: `INTEGER`" not in text:
+            text += "\n\n" + COLUMN_RULES_SUPPLEMENT
+        return text + _hooks_supplement() + "\n"
     return SYSTEM_PROMPT

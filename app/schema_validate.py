@@ -69,6 +69,7 @@ SCREEN_KEYS = {
     "scopes",
     "groups",
     "empty",
+    "layout_id",
 }
 UPDATE_SCREEN_KEYS = {
     "id",
@@ -79,6 +80,7 @@ UPDATE_SCREEN_KEYS = {
     "scopes",
     "groups",
     "empty",
+    "layout_id",
 }
 RELATED_KEYS = {"table", "fk", "title", "columns", "empty"}
 SCOPE_KEYS = {"id", "label", "column", "value"}
@@ -145,7 +147,11 @@ def _check_column_def(col: Any, *, context: str) -> dict[str, Any]:
         raise ValidationError("bad_name", f"{context} must not declare {name}.")
     col_type = col.get("type")
     if col_type not in ALLOWED_TYPES:
-        raise ValidationError("bad_name", f"{context} has a bad type.")
+        raise ValidationError(
+            "bad_name",
+            f"{context} column {name!r} has bad type {col_type!r} "
+            f"(use INTEGER, REAL, or TEXT).",
+        )
     widget = col.get("widget", "text")
     if widget not in ALLOWED_WIDGETS:
         raise ValidationError("bad_name", f"{context} has a bad widget.")
@@ -368,22 +374,61 @@ def validate_diff(
         for s in (schema.get("screens") or [])
         if isinstance(s, dict)
     }
+    layout_ids: set[str] = set()
+    for layout in schema.get("layouts") or []:
+        if isinstance(layout, dict) and _is_name(layout.get("id")):
+            layout_ids.add(layout["id"])
+    for layout in diff.get("add_layouts") or []:
+        if isinstance(layout, dict) and _is_name(layout.get("id")):
+            layout_ids.add(layout["id"])
+
     new_screen_ids: set[str] = set()
     for item in add_screens:
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "add_screens items must be objects.")
         extra_s = set(item.keys()) - SCREEN_KEYS
-        if extra_s:
-            raise ValidationError("unknown_key", "add_screens item has unknown keys.")
         sid = item.get("id")
+        if extra_s:
+            label = sid if _is_name(sid) else "?"
+            raise ValidationError(
+                "unknown_key",
+                f"add_screens item {label} has unknown keys: {sorted(extra_s)}.",
+            )
         if not _is_name(sid):
             raise ValidationError("bad_name", "Screen id is not snake_case.")
         if sid in existing_screen_ids or sid in new_screen_ids:
             raise ValidationError("bad_name", f"Screen id {sid} is not unique.")
         new_screen_ids.add(sid)
         stype = item.get("type")
-        if stype not in ("list", "form"):
-            raise ValidationError("bad_name", "Screen type must be list or form.")
+        if stype not in ("list", "form", "layout"):
+            raise ValidationError(
+                "bad_name", "Screen type must be list, form, or layout."
+            )
+        if stype == "layout":
+            lid = item.get("layout_id")
+            if not _is_name(lid):
+                raise ValidationError("bad_name", "Layout screen needs layout_id.")
+            if lid not in layout_ids:
+                raise ValidationError(
+                    "bad_name",
+                    f"layout_id {lid} is missing; add it in add_layouts.",
+                )
+            if item.get("table") is not None:
+                raise ValidationError("bad_name", "Layout screens must not set table.")
+            for key in ("columns", "related", "scopes", "groups", "empty"):
+                if key in item:
+                    raise ValidationError(
+                        "bad_name", f"{key} is not allowed on layout screens."
+                    )
+            if "nav" in item and not isinstance(item.get("nav"), bool):
+                raise ValidationError("bad_name", "Screen nav must be a boolean.")
+            if "title" in item and not isinstance(item.get("title"), str):
+                raise ValidationError("bad_name", "Screen title must be a string.")
+            continue
+        if "layout_id" in item:
+            raise ValidationError(
+                "bad_name", "layout_id is only allowed on layout screens."
+            )
         tname = item.get("table")
         if tname not in ptables:
             raise ValidationError("bad_name", f"Screen table {tname} is missing.")
@@ -456,12 +501,24 @@ def validate_diff(
         home = (schema.get("app") or {}).get("home")
     if home:
         found = screen_by_id.get(home)
-        if not found or found.get("type") != "list":
-            raise ValidationError("bad_name", "app.home must be a list screen id.")
-        home_table = ptables.get(found.get("table"))
-        if table_role(home_table) == "lookup":
+        if not found:
+            raise ValidationError("bad_name", "app.home must be an existing screen id.")
+        home_type = found.get("type")
+        if home_type == "layout":
+            lid = found.get("layout_id")
+            if not _is_name(lid) or lid not in layout_ids:
+                raise ValidationError(
+                    "bad_name", "app.home layout screen needs a valid layout_id."
+                )
+        elif home_type == "list":
+            home_table = ptables.get(found.get("table"))
+            if table_role(home_table) == "lookup":
+                raise ValidationError(
+                    "bad_name", "app.home must be a primary list screen."
+                )
+        else:
             raise ValidationError(
-                "bad_name", "app.home must be a primary list screen."
+                "bad_name", "app.home must be a list or layout screen id."
             )
 
     for item in extend_enums:

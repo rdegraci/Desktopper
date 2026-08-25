@@ -238,6 +238,147 @@ class FinalTests(unittest.TestCase):
         self.assertEqual(result["ok"], 2)
         self.assertEqual(result["fail"], 1)
 
+    def test_bad_column_type_names_column(self):
+        schema = read_or_create_schema(self.cfg.appdir)
+        with self.assertRaises(ValidationError) as ctx:
+            validate_diff(
+                schema,
+                {
+                    "summary": "x",
+                    "add_tables": [
+                        {
+                            "name": "repositories",
+                            "label": "Repos",
+                            "columns": [
+                                {
+                                    "name": "remote_url",
+                                    "type": "url",
+                                    "label": "URL",
+                                    "nullable": False,
+                                    "widget": "text",
+                                }
+                            ],
+                        }
+                    ],
+                },
+            )
+        self.assertIn("remote_url", str(ctx.exception))
+        self.assertIn("url", str(ctx.exception))
+        self.assertIn("INTEGER", str(ctx.exception))
+
+    def test_layout_screen_accepted(self):
+        schema = read_or_create_schema(self.cfg.appdir)
+        diff = {
+            "summary": "Dashboard.",
+            "app": {"title": "Repos", "home": "repo_dashboard"},
+            "add_tables": [
+                {
+                    "name": "repositories",
+                    "label": "Repositories",
+                    "columns": [
+                        {
+                            "name": "name",
+                            "type": "TEXT",
+                            "label": "Name",
+                            "nullable": False,
+                            "widget": "text",
+                        },
+                        {
+                            "name": "status",
+                            "type": "TEXT",
+                            "label": "Status",
+                            "nullable": False,
+                            "widget": "select",
+                            "enum": ["active", "archived"],
+                        },
+                    ],
+                }
+            ],
+            "add_screens": [
+                {
+                    "id": "repositories_list",
+                    "type": "list",
+                    "table": "repositories",
+                    "title": "Repositories",
+                    "columns": ["name", "status"],
+                },
+                {
+                    "id": "repositories_form",
+                    "type": "form",
+                    "table": "repositories",
+                    "title": "Repository",
+                },
+                {
+                    "id": "repo_dashboard",
+                    "type": "layout",
+                    "layout_id": "repo_board",
+                    "title": "Dashboard",
+                },
+            ],
+            "add_layouts": [
+                {
+                    "id": "repo_board",
+                    "title": "Repo board",
+                    "rows": [
+                        {
+                            "cols": [
+                                {
+                                    "span": 12,
+                                    "widget": "kanban",
+                                    "table": "repositories",
+                                    "column": "status",
+                                    "title_column": "name",
+                                }
+                            ]
+                        }
+                    ],
+                }
+            ],
+        }
+        validate_diff(schema, diff)
+        apply_diff(self.cfg, diff)
+        merged = read_or_create_schema(self.cfg.appdir)
+        screen = next(s for s in merged["screens"] if s["id"] == "repo_dashboard")
+        self.assertEqual(screen["type"], "layout")
+        self.assertEqual(screen["layout_id"], "repo_board")
+        self.assertEqual(merged["app"]["home"], "repo_dashboard")
+
+    def test_add_screens_unknown_keys_lists_them(self):
+        schema = read_or_create_schema(self.cfg.appdir)
+        with self.assertRaises(ValidationError) as ctx:
+            validate_diff(
+                schema,
+                {
+                    "summary": "x",
+                    "add_tables": [
+                        {
+                            "name": "items",
+                            "label": "Items",
+                            "columns": [
+                                {
+                                    "name": "name",
+                                    "type": "TEXT",
+                                    "label": "Name",
+                                    "nullable": False,
+                                    "widget": "text",
+                                }
+                            ],
+                        }
+                    ],
+                    "add_screens": [
+                        {
+                            "id": "items_list",
+                            "type": "list",
+                            "table": "items",
+                            "title": "Items",
+                            "columns": ["name"],
+                            "layout_id": "oops",
+                        }
+                    ],
+                },
+            )
+        self.assertIn("layout_id is only allowed", str(ctx.exception))
+
     def test_unknown_layout_widget_rejected(self):
         schema = read_or_create_schema(self.cfg.appdir)
         with self.assertRaises(ValidationError):

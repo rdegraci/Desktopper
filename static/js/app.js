@@ -1192,6 +1192,14 @@
       var screens = schema.screens || [];
       var i;
       for (i = 0; i < screens.length; i++) {
+        if (
+          screens[i].id === homeId &&
+          screens[i].type === "layout" &&
+          screens[i].layout_id
+        ) {
+          go("#layout/" + screens[i].layout_id);
+          return;
+        }
         if (screens[i].id === homeId && screens[i].type === "list" && screens[i].table) {
           go("#list/" + screens[i].table);
           return;
