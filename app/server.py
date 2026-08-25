@@ -189,6 +189,7 @@ def create_app(*, llm_complete=None) -> Flask:
                     limit=limit,
                     offset=offset,
                     request_id=g.request_id,
+                    user=getattr(g, "user", None),
                 )
             )
         except CrudError as err:
@@ -215,7 +216,7 @@ def create_app(*, llm_complete=None) -> Flask:
     @flask_app.get("/api/tables/<name>/<int:row_id>")
     def api_get(name: str, row_id: int):
         try:
-            return jsonify(get_row(cfg, name, row_id))
+            return jsonify(get_row(cfg, name, row_id, user=getattr(g, "user", None)))
         except CrudError as err:
             return _crud_error(err)
 
@@ -366,6 +367,27 @@ def create_app(*, llm_complete=None) -> Flask:
     @flask_app.get("/api/scheduler/status")
     def api_scheduler_status():
         return jsonify(scheduler_status())
+
+    @flask_app.get("/api/jobs")
+    def api_jobs_list():
+        from app.host_db import connect
+
+        schema = read_or_create_schema(cfg.appdir)
+        conn = connect(cfg.appdir)
+        schedule: dict[str, str | None] = {}
+        try:
+            cur = conn.execute(
+                "SELECT spec_id, next_run_at FROM _schedules WHERE spec_kind = 'job'"
+            )
+            for spec_id, next_run_at in cur.fetchall():
+                schedule[str(spec_id)] = next_run_at
+        finally:
+            conn.close()
+        jobs_out = []
+        for job in schema.get("jobs") or []:
+            if isinstance(job, dict) and job.get("id"):
+                jobs_out.append({**job, "next_run_at": schedule.get(job["id"])})
+        return jsonify({"jobs": jobs_out})
 
     @flask_app.get("/api/formulas/<formula_id>")
     def api_formula_eval(formula_id: str):

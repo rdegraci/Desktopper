@@ -151,6 +151,7 @@ def list_rows_search(
     limit: int = 50,
     offset: int = 0,
     request_id: str | None = None,
+    user: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     schema = read_or_create_schema(cfg.appdir)
     table = _require_table(schema, table_name)
@@ -169,6 +170,9 @@ def list_rows_search(
         rows = [_row_to_dict(cur, row) for row in cur.fetchall()]
     finally:
         conn.close()
+    from app.crud import _public_row
+
+    rows = [_public_row(cfg, table_name, row, user=user) for row in rows]
     emit(
         cfg,
         event="search.list",

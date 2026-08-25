@@ -171,13 +171,39 @@ def _get_row_conn(
     return _row_to_dict(cur, row)
 
 
-def get_row(cfg: AppConfig, table_name: str, row_id: int) -> dict[str, Any]:
+def _public_row(
+    cfg: AppConfig,
+    table_name: str,
+    row: dict[str, Any],
+    *,
+    user: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    schema = read_or_create_schema(cfg.appdir)
+    from app.auth import filter_columns_for_role
+    from app.formulas import eval_row_formulas
+
+    hidden = filter_columns_for_role(schema, table_name, user)
+    out = dict(row)
+    if hidden:
+        for col in hidden:
+            out.pop(col, None)
+    return eval_row_formulas(cfg, table_name, out, schema)
+
+
+def get_row(
+    cfg: AppConfig,
+    table_name: str,
+    row_id: int,
+    *,
+    user: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     schema = read_or_create_schema(cfg.appdir)
     conn = _connect(cfg)
     try:
-        return _get_row_conn(conn, schema, table_name, row_id)
+        row = _get_row_conn(conn, schema, table_name, row_id)
     finally:
         conn.close()
+    return _public_row(cfg, table_name, row, user=user)
 
 
 def insert_row(

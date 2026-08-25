@@ -368,11 +368,25 @@ Use human labels with spaces and capitals. Use snake_case only in `name` and `id
 """.strip() + "\n"
 
 
+def _hooks_supplement() -> str:
+    start = SYSTEM_PROMPT.find("## add_hooks")
+    if start < 0:
+        return ""
+    end = SYSTEM_PROMPT.find("## Forbidden", start)
+    if end < 0:
+        end = len(SYSTEM_PROMPT)
+    return (
+        "\n\n## Hooks (MVP keys, still supported)\n\n"
+        "The output object also accepts: `add_hooks`, `update_hooks`, `disable_hooks`, `remove_hooks`.\n\n"
+        + SYSTEM_PROMPT[start:end].strip()
+    )
+
+
 def load_system_prompt() -> str:
     path = Path(__file__).resolve().parent.parent / "docs" / "cache" / "FINAL-PROMPT.md"
     if path.is_file():
         text = path.read_text(encoding="utf-8")
         if "---" in text:
             text = text.split("---", 1)[1]
-        return text.strip() + "\n"
+        return text.strip() + _hooks_supplement() + "\n"
     return SYSTEM_PROMPT
