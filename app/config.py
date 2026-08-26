@@ -133,6 +133,40 @@ def schema_path(appdir: Path) -> Path:
     return appdir / "schema.json"
 
 
+def _dedupe_schema_columns(data: dict[str, Any]) -> list[dict[str, Any]]:
+    """Remove duplicate column entries per table (keep first). Returns repair rows."""
+    tables = data.get("tables")
+    if not isinstance(tables, dict):
+        return []
+    repairs: list[dict[str, Any]] = []
+    for tname, table in tables.items():
+        if not isinstance(table, dict):
+            continue
+        cols = table.get("columns")
+        if not isinstance(cols, list):
+            continue
+        seen: set[str] = set()
+        deduped: list[Any] = []
+        dup_names: list[str] = []
+        for col in cols:
+            if not isinstance(col, dict):
+                deduped.append(col)
+                continue
+            name = col.get("name")
+            if not isinstance(name, str):
+                deduped.append(col)
+                continue
+            if name in seen:
+                dup_names.append(name)
+                continue
+            seen.add(name)
+            deduped.append(col)
+        if dup_names:
+            table["columns"] = deduped
+            repairs.append({"table": tname, "columns": sorted(set(dup_names))})
+    return repairs
+
+
 def write_empty_schema(appdir: Path) -> dict:
     path = schema_path(appdir)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -183,6 +217,22 @@ def read_or_create_schema(appdir: Path) -> dict:
         data["tables"] = {}
     if not isinstance(data["screens"], list):
         data["screens"] = []
+    repairs = _dedupe_schema_columns(data)
+    if repairs:
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        import logging
+
+        logging.getLogger("desktopper").info(
+            "Deduped duplicate column metadata in schema.",
+            extra={
+                "payload": {
+                    "event": "schema.repair.duplicate_columns",
+                    "component": "config",
+                    "ok": True,
+                    "detail": {"tables": repairs},
+                }
+            },
+        )
     return data
 
 
