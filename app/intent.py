@@ -12,7 +12,8 @@ from app.engine import EngineError, apply_diff
 from app.hooks import hook_sources, read_registry
 from app.llm import LlmError, chat_completion, parse_json_object
 from app.log import emit
-from app.schema_validate import NAME_RE, ValidationError
+from app.intent_errors import truncate_rejected_diff
+from app.schema_validate import IntentValidationError, NAME_RE, ValidationError
 from app.system_prompt import load_system_prompt
 
 
@@ -183,9 +184,13 @@ def run_intent(
             level="error",
             request_id=request_id,
             schema_version=version_before,
-            detail={"error_code": exc.error_code},
+            detail={
+                "error_code": exc.error_code,
+                "diff_keys": sorted(diff.keys()) if isinstance(diff, dict) else [],
+                **exc.detail,
+            },
         )
-        raise
+        raise IntentValidationError(exc, truncate_rejected_diff(diff)) from exc
     except EngineError as exc:
         emit(
             cfg,

@@ -98,10 +98,39 @@ UPDATE_HOOK_KEYS = {"id", "code", "enabled"}
 
 
 class ValidationError(Exception):
-    def __init__(self, error_code: str, msg: str) -> None:
+    def __init__(
+        self,
+        error_code: str,
+        msg: str,
+        *,
+        detail: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__(msg)
         self.error_code = error_code
         self.msg = msg
+        self.detail = detail or {}
+
+
+class IntentValidationError(ValidationError):
+    """Validation failed after the model returned a parsed spec diff."""
+
+    def __init__(self, exc: ValidationError, rejected_diff: dict[str, Any]) -> None:
+        super().__init__(exc.error_code, exc.msg, detail=exc.detail)
+        self.rejected_diff = rejected_diff
+
+
+def _unknown_keys(
+    path: str,
+    extra: set[str],
+    *,
+    hint: str,
+) -> ValidationError:
+    keys = sorted(extra)
+    return ValidationError(
+        "unknown_key",
+        f"{path} has unknown keys: {keys}. {hint}",
+        detail={"path": path, "unknown_keys": keys, "hint": hint},
+    )
 
 
 def _is_name(value: Any) -> bool:
@@ -155,6 +184,12 @@ def _check_column_def(col: Any, *, context: str) -> dict[str, Any]:
             "bad_name",
             f"{context} column {name!r} has bad type {col_type!r} "
             f"(use INTEGER, REAL, or TEXT).",
+            detail={
+                "path": context,
+                "column": name,
+                "bad_type": col_type,
+                "hint": "use INTEGER, REAL, or TEXT",
+            },
         )
     widget = col.get("widget", "text")
     _validate_widget_fits_type(col_type, widget, col, context=context)
@@ -431,15 +466,15 @@ def validate_diff(
             raise ValidationError("bad_name", "update_tables must set role.")
         _check_table_role(item.get("role"), context=f"update_tables {tname}")
 
-    for item in add_columns:
+    for idx, item in enumerate(add_columns):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "add_columns items must be objects.")
         extra_c = set(item.keys()) - {"table", "column"}
         if extra_c:
-            raise ValidationError(
-                "unknown_key",
-                f"add_columns item has unknown keys: {sorted(extra_c)} "
-                f"(use table and column only).",
+            raise _unknown_keys(
+                f"add_columns[{idx}]",
+                extra_c,
+                hint="Use table and a nested column object only.",
             )
         tname = item.get("table")
         if not _is_name(tname):
@@ -494,16 +529,17 @@ def validate_diff(
             layout_ids.add(layout["id"])
 
     new_screen_ids: set[str] = set()
-    for item in add_screens:
+    for idx, item in enumerate(add_screens):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "add_screens items must be objects.")
         extra_s = set(item.keys()) - SCREEN_KEYS
         sid = item.get("id")
         if extra_s:
-            label = sid if _is_name(sid) else "?"
-            raise ValidationError(
-                "unknown_key",
-                f"add_screens item {label} has unknown keys: {sorted(extra_s)}.",
+            label = sid if _is_name(sid) else f"index {idx}"
+            raise _unknown_keys(
+                f"add_screens[{idx}]",
+                extra_s,
+                hint=f"Screen {label} has invalid keys.",
             )
         if not _is_name(sid):
             raise ValidationError("bad_name", "Screen id is not snake_case.")
@@ -688,14 +724,15 @@ def validate_diff(
             raise ValidationError("bad_name", "hide_columns column is missing.")
 
     removed: set[tuple[str, str]] = set()
-    for item in remove_columns:
+    for idx, item in enumerate(remove_columns):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "remove_columns items must be objects.")
         extra_r = set(item.keys()) - {"table", "column"}
         if extra_r:
-            raise ValidationError(
-                "unknown_key",
-                f"remove_columns item has unknown keys: {sorted(extra_r)}.",
+            raise _unknown_keys(
+                f"remove_columns[{idx}]",
+                extra_r,
+                hint="Use table and column only.",
             )
         tname = item.get("table")
         cname = item.get("column")
@@ -726,14 +763,15 @@ def validate_diff(
         if reason:
             raise ValidationError("bad_name", f"Cannot remove {tname}.{cname}: {reason}.")
 
-    for item in update_columns:
+    for idx, item in enumerate(update_columns):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "update_columns items must be objects.")
         extra_uc = set(item.keys()) - UPDATE_COLUMN_KEYS
         if extra_uc:
-            raise ValidationError(
-                "unknown_key",
-                f"update_columns item has unknown keys: {sorted(extra_uc)}.",
+            raise _unknown_keys(
+                f"update_columns[{idx}]",
+                extra_uc,
+                hint="Allowed keys: table, column, widget, label, nullable, enum.",
             )
         tname = item.get("table")
         cname = item.get("column")

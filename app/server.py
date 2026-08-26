@@ -61,7 +61,7 @@ from app.log import (
     setup_logging,
 )
 from app.providers import UnknownLlmProviderError
-from app.schema_validate import ValidationError
+from app.schema_validate import IntentValidationError, ValidationError
 
 STATIC_DIR = repo_root() / "static"
 BOOTSTRAP_CSS = STATIC_DIR / "css" / "bootstrap.min.css"
@@ -477,7 +477,12 @@ def create_app(*, llm_complete=None) -> Flask:
                 {"error": public_error_message(exc), "error_code": exc.error_code}
             ), status
         except ValidationError as exc:
-            return jsonify({"error": exc.msg, "error_code": exc.error_code}), 400
+            payload: dict[str, object] = {"error": exc.msg, "error_code": exc.error_code}
+            if exc.detail:
+                payload["detail"] = exc.detail
+            if isinstance(exc, IntentValidationError):
+                payload["rejected_diff"] = exc.rejected_diff
+            return jsonify(payload), 400
         except EngineError as exc:
             return jsonify({"error": exc.msg, "error_code": exc.error_code}), 500
         return jsonify(result)
