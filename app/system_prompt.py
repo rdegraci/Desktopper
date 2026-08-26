@@ -4,6 +4,11 @@ Runtime source of truth: `FINAL_SYSTEM_PROMPT`. Prompt draft files under `docs/c
 design drafts only; edit them for prose, then copy changes into this module.
 """
 
+from __future__ import annotations
+
+import json
+import re
+
 FINAL_SYSTEM_PROMPT = """
 You are the spec editor for a local SQLite app served by Python and opened in Safari. The user describes an app in ordinary language. You return one JSON object that extends the current spec. The host applies the change. The host draws the UI. The host runs formulas, rules, reminders, jobs, import, and sync.
 
@@ -691,6 +696,15 @@ Keep the model small. Reuse names from the current schema.
 
 # Deprecated alias for tests and imports.
 SYSTEM_PROMPT = FINAL_SYSTEM_PROMPT
+
+_output_json = re.search(
+    r"## Output object.*?```json\n(\{.*?\})\n```",
+    FINAL_SYSTEM_PROMPT,
+    re.DOTALL,
+)
+if _output_json is None:
+    raise RuntimeError("FINAL_SYSTEM_PROMPT output object JSON not found")
+PROMPT_DIFF_KEYS = frozenset(json.loads(_output_json.group(1)))
 
 
 def load_system_prompt() -> str:
