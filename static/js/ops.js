@@ -12,6 +12,7 @@
   var errorDetailEl = document.getElementById("intent-error-detail");
   var rejectedDiffEl = document.getElementById("intent-rejected-diff");
   var rejectedDiffPre = document.getElementById("intent-rejected-diff-pre");
+  var bootstrapHintEl = document.getElementById("intent-bootstrap-hint");
   var copyBtn = document.getElementById("copy-logs");
   var logsEl = document.getElementById("logs-text");
   var hookPreviewEl = document.getElementById("hook-preview");
@@ -301,6 +302,12 @@
       document.title = "Ops — " + name;
       var ver = schema.version !== undefined ? schema.version : 0;
       setVersion(ver);
+      if (bootstrapHintEl) {
+        var screens = schema.screens;
+        var emptySchema =
+          ver === 0 || !Array.isArray(screens) || screens.length === 0;
+        bootstrapHintEl.hidden = !emptySchema;
+      }
     })
     .catch(function () {});
 

@@ -70,6 +70,8 @@ Home (`/`) is the generated app: lists, forms, related child lists, and search. 
 
 Ops (`/ops`) is where you describe changes. The LLM returns a JSON schema diff. The host validates and applies it. After a successful change, refresh the App tab. Home does not live-update.
 
+The runtime system prompt is `FINAL_SYSTEM_PROMPT` in `app/system_prompt.py`. Files under `docs/cache/*-PROMPT.md` are design drafts only; the server does not read them.
+
 The navbar **Ops** link uses `href="/ops"` and `target="_blank"`. You must click it. The app does not open Ops by itself and does not redirect `/` to `/ops`.
 
 Hash routes: `#list/contacts` and `#form/contacts/1`.

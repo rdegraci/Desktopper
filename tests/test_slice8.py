@@ -179,6 +179,8 @@ class Slice8OpsJsTests(unittest.TestCase):
         self.assertIn("intent-busy", self.html)
         self.assertIn("intent-error-detail", self.html)
         self.assertIn("intent-rejected-diff", self.html)
+        self.assertIn("intent-guidance", self.html)
+        self.assertIn("intent-bootstrap-hint", self.html)
         self.assertIn("What the model returned", self.html)
         self.assertIn("showIntentError", self.src)
         self.assertIn("spinner-border", self.html)

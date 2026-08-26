@@ -306,6 +306,27 @@ Or:
 
 Do not change `name`. The SQLite column name stays the same.
 
+## Changing fields
+
+| User intent | Use |
+|-------------|-----|
+| Stop showing a field | `hide_columns` |
+| Rename a label | `update_labels` |
+| Change widget (same SQLite type) | `update_columns` |
+| Text → checkbox | `add_columns` for INTEGER checkbox + `hide_columns` on the old column, or `remove_columns` if deleting |
+| Delete field and stored data | `remove_columns` |
+
+Prefer `hide_columns` when the user only wants a field off the form. Use `remove_columns` only when they want the column and its data gone.
+
+## Empty schema bootstrap
+
+On an empty schema, split work into two intents when the user asks for a full app:
+
+1. **First intent:** tables, columns, list screens, and form screens only.
+2. **Second intent:** dashboard (`add_layouts` + layout screen), rules, reminders, jobs, roles, or import when the user asks for them.
+
+Do not add formulas, rules, reminders, layouts, or sync in the first pass unless the user names only that feature.
+
 ## Intent routing
 
 | User asks | You add |

@@ -23,6 +23,8 @@ class SystemPromptTests(unittest.TestCase):
         self.assertIn('"type": "layout"', text)
         self.assertIn("layout_id", text)
         self.assertIn("add_hooks", text)
+        self.assertIn("Changing fields", text)
+        self.assertIn("Empty schema bootstrap", text)
         self.assertNotIn("ignore those parts", text)
 
     def test_no_cache_read_in_loader(self) -> None:
