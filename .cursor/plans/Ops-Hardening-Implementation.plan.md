@@ -32,27 +32,10 @@ Improve Ops feedback, schema hygiene, and prompt/validator parity. Consolidate t
 
 **Files:** `app/schema_validate.py`, `app/intent.py`, `app/server.py`
 
-1. Extend `ValidationError` with optional `detail: dict` (e.g. `path`, `unknown_keys`, `hint`).
-2. Populate `detail` in high-traffic failures:
-   - `add_columns` / `add_screens` / `update_columns` / `remove_columns` unknown keys (include sorted key list + expected shape hint)
-   - Column type / widget mismatches (include column name and bad value)
-3. In `run_intent`, on `ValidationError` after parse:
-   - Re-raise or wrap with `detail` preserved
-   - Include `rejected_diff` in API response (parsed JSON, truncated if huge — cap ~8 KB)
-4. `POST /api/intent` 400 body shape:
-
-```json
-{
-  "error": "human message",
-  "error_code": "unknown_key",
-  "detail": { "path": "add_columns[0]", "unknown_keys": ["name", "type"] },
-  "rejected_diff": { "summary": "...", "add_columns": [] }
-}
-```
-
-5. Log `rejected_diff` keys in `intent.apply.fail` detail (not full diff in jsonl if large).
-
-**Tests:** `tests/test_intent_errors.py` (new) — fake LLM returns bad `add_columns` shape; API returns `detail` + `rejected_diff`.
+- [x] Extend `ValidationError` with optional `detail: dict`
+- [x] Populate `detail` in high-traffic failures
+- [x] Include `rejected_diff` in API response
+- [x] Tests: `tests/test_intent_errors.py`
 
 **Commit:** `Return structured validation errors and rejected diff from intent API.`
 
@@ -62,12 +45,9 @@ Improve Ops feedback, schema hygiene, and prompt/validator parity. Consolidate t
 
 **Files:** `static/ops.html`, `static/js/ops.js`, `tests/test_slice8.py` (contract)
 
-1. Below `#intent-error`, add collapsible **“What the model returned”** (`<details>` + `<pre>`).
-2. On intent 400, show `error`, optional `detail` summary line (e.g. `add_columns[0]: unknown keys name, type — use table and column only`).
-3. Pretty-print `rejected_diff` when present.
-4. Keep success path unchanged.
-
-**Tests:** Extend `test_ops_page_contract` for new DOM ids; optional js-less API test only.
+- [x] Collapsible “What the model returned” panel
+- [x] Detail summary line on intent 400
+- [x] Pretty-print `rejected_diff`
 
 **Commit:** `Show rejected diff and validation detail on Ops intent errors.`
 
@@ -75,14 +55,10 @@ Improve Ops feedback, schema hygiene, and prompt/validator parity. Consolidate t
 
 ## Phase 3 — Schema column dedupe on read
 
-**Files:** `app/config.py`, `app/log.py` (optional emit), `tests/test_config.py` or `tests/test_final.py`
+**Files:** `app/config.py`, `tests/test_config.py`
 
-1. In `read_or_create_schema`, after loading tables:
-   - Per table, dedupe `columns` by `name` (keep **first** occurrence).
-   - If duplicates removed, `emit` once: `schema.repair.duplicate_columns` with table + column names.
-2. Do **not** auto-write repaired schema unless duplicates found (write back once to fix appdir — avoids read side effects on every request). Only persist repair when dedupe happened.
-
-**Tests:** Load schema with duplicate `lives_online` entries; assert one remains and file rewritten.
+- [x] Dedupe columns by name (keep first)
+- [x] Persist repair and log event
 
 **Commit:** `Dedupe duplicate column metadata when loading schema.`
 
@@ -92,24 +68,10 @@ Improve Ops feedback, schema hygiene, and prompt/validator parity. Consolidate t
 
 **Files:** `app/system_prompt.py`, `docs/cache/FINAL-PROMPT.md`, `docs/cache/MVP-PROMPT.md`, `tests/test_system_prompt.py`
 
-1. Add `FINAL_SYSTEM_PROMPT` string:
-   - Merge content from current `docs/cache/FINAL-PROMPT.md` (post-`---` body)
-   - Merge unique parts of `COLUMN_RULES_SUPPLEMENT` (no duplication with MVP sections)
-   - Include FINAL keys: formulas, rules, reminders, jobs, layouts, roles, grants, import, sync, `update_columns`, `remove_columns`, layout screens
-   - **Remove** stale MVP line: “ignore dashboard / reminder / login” (FINAL supports these)
-   - Keep hooks section inline (drop `_hooks_supplement()` indirection)
-2. `load_system_prompt()` → `return FINAL_SYSTEM_PROMPT` only (no filesystem read).
-3. Keep `SYSTEM_PROMPT` as deprecated alias or trim to re-export for tests; document in module docstring.
-4. Add banner at top of each `docs/cache/*-PROMPT.md`:
-
-```markdown
-> **DRAFT** — Not loaded at runtime. Source of truth: `app/system_prompt.py` (`FINAL_SYSTEM_PROMPT`).
-```
-
-5. Update `test_system_prompt.py`:
-   - Assert `load_system_prompt()` equals `FINAL_SYSTEM_PROMPT`
-   - Assert no `docs/cache` read in `intent.py` / `llm.py` (existing)
-   - Assert key FINAL sections present (`add_layouts`, `remove_columns`, layout screen)
+- [x] `FINAL_SYSTEM_PROMPT` embedded in module
+- [x] `load_system_prompt()` returns constant only
+- [x] DRAFT banners on cache prompts (local; gitignored)
+- [x] Updated `test_system_prompt.py`
 
 **Commit:** `Load FINAL system prompt only from app/system_prompt.py.`
 
@@ -117,16 +79,11 @@ Improve Ops feedback, schema hygiene, and prompt/validator parity. Consolidate t
 
 ## Phase 5 — Prompt ↔ validator contract tests (#2)
 
-**Files:** `tests/test_prompt_contract.py` (new), `app/schema_validate.py` (export `ALLOWED_DIFF_KEYS` if needed)
+**Files:** `tests/test_prompt_contract.py`, `app/system_prompt.py`
 
-1. Parse `FINAL_SYSTEM_PROMPT` output-object JSON example (or maintain explicit `PROMPT_DIFF_KEYS` frozenset in `system_prompt.py` exported for tests).
-2. Assert every key in prompt output object ⊆ `ALLOWED_DIFF_KEYS`.
-3. Assert every key in `ALLOWED_DIFF_KEYS` appears in prompt (or in documented FINAL-only list) — prevents orphan validator keys.
-4. Golden diff fixtures (minimal valid):
-   - `add_columns` nested shape
-   - `layout` screen + `add_layouts`
-   - `hide_columns` + `remove_columns`
-   - Each passes `validate_diff` against empty schema (where applicable)
+- [x] `PROMPT_DIFF_KEYS` exported
+- [x] Subset/superset checks vs `ALLOWED_DIFF_KEYS`
+- [x] Golden diff fixtures
 
 **Commit:** `Add prompt and validator contract tests.`
 
@@ -136,32 +93,9 @@ Improve Ops feedback, schema hygiene, and prompt/validator parity. Consolidate t
 
 **Files:** `app/system_prompt.py`, `static/ops.html`, `static/js/ops.js`, `README.md`
 
-### Prompt (`FINAL_SYSTEM_PROMPT`)
-
-Add **## Changing fields** table:
-
-| User intent | Use |
-|-------------|-----|
-| Stop showing | `hide_columns` |
-| Rename label | `update_labels` |
-| Change widget (same type) | `update_columns` |
-| Text → checkbox | `add_columns` + `hide_columns` or `remove_columns` |
-| Delete field and data | `remove_columns` |
-
-Add **## Empty schema bootstrap**:
-
-- First intent: tables + list/form screens only.
-- Second intent: dashboard (`add_layouts` + layout screen), rules, reminders.
-
-### Ops UI
-
-- Short hint under intent textarea (static HTML): field-change and two-step bootstrap bullets.
-- Optional: show hint only when `GET /api/schema` has `version === 0` or no screens (small `ops.js` fetch on load).
-
-### README
-
-- Note runtime prompt lives in `app/system_prompt.py`.
-- Note `docs/cache/` prompts are design drafts.
+- [x] Changing fields + empty schema bootstrap in prompt
+- [x] Ops UI hints
+- [x] README note
 
 **Commit:** `Add field-edit and bootstrap guidance to prompt and Ops UI.`
 
@@ -171,8 +105,7 @@ Add **## Empty schema bootstrap**:
 
 **Files:** `app/schema_validate.py`
 
-1. Replace remaining generic `"has unknown keys"` messages with sorted key lists (hide_columns, update_labels, add_tables, etc.).
-2. Ensure all raise paths set `detail` where cheap.
+- [x] Sorted key lists for remaining unknown-key paths
 
 **Commit:** `Improve remaining validation error messages with key lists.`
 
