@@ -172,7 +172,11 @@ def _check_column_def(col: Any, *, context: str) -> dict[str, Any]:
         raise ValidationError("bad_name", f"{context} column must be an object.")
     extra = set(col.keys()) - COLUMN_KEYS
     if extra:
-        raise ValidationError("unknown_key", f"{context} has unknown column keys.")
+        raise _unknown_keys(
+            context,
+            extra,
+            hint="Use name, type, label, nullable, widget, and optional fk, enum, default, or hidden.",
+        )
     name = col.get("name")
     if not _is_name(name):
         raise ValidationError("bad_name", f"{context} has a bad column name.")
@@ -380,14 +384,22 @@ def validate_diff(
             raise ValidationError("forbidden_ddl", "Spec diff must not drop or rename.")
     extra = keys - ALLOWED_DIFF_KEYS
     if extra:
-        raise ValidationError("unknown_key", "Spec diff has unknown keys.")
+        raise _unknown_keys(
+            "diff",
+            extra,
+            hint="Use only keys listed in the output object.",
+        )
 
     if "app" in diff and diff["app"] is not None:
         if not isinstance(diff["app"], dict):
             raise ValidationError("bad_name", "app must be an object.")
         extra_app = set(diff["app"].keys()) - APP_KEYS
         if extra_app:
-            raise ValidationError("unknown_key", "app has unknown keys.")
+            raise _unknown_keys(
+                "app",
+                extra_app,
+                hint="Use title, home, and prompt only.",
+            )
         home = diff["app"].get("home")
         if home is not None and not _is_name(home):
             raise ValidationError("bad_name", "app.home must be a screen id.")
@@ -427,12 +439,16 @@ def validate_diff(
 
     existing = _table_map(schema)
     new_names: set[str] = set()
-    for item in add_tables:
+    for idx, item in enumerate(add_tables):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "add_tables items must be objects.")
         extra_t = set(item.keys()) - TABLE_KEYS
         if extra_t:
-            raise ValidationError("unknown_key", "add_tables item has unknown keys.")
+            raise _unknown_keys(
+                f"add_tables[{idx}]",
+                extra_t,
+                hint="Use name, label, role, columns, and optional hidden only.",
+            )
         name = item.get("name")
         if not _is_name(name):
             raise ValidationError("bad_name", "Table name is not snake_case.")
@@ -451,12 +467,16 @@ def validate_diff(
                 raise ValidationError("bad_name", f"Duplicate column on {name}.")
             seen_cols.add(cdef["name"])
 
-    for item in update_tables:
+    for idx, item in enumerate(update_tables):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "update_tables items must be objects.")
         extra_ut = set(item.keys()) - UPDATE_TABLE_KEYS
         if extra_ut:
-            raise ValidationError("unknown_key", "update_tables item has unknown keys.")
+            raise _unknown_keys(
+                f"update_tables[{idx}]",
+                extra_ut,
+                hint="Use name and role only.",
+            )
         tname = item.get("name")
         if not _is_name(tname) or tname not in existing:
             raise ValidationError("bad_name", "update_tables name is missing.")
@@ -606,12 +626,16 @@ def validate_diff(
     for item in add_screens:
         screen_by_id[item["id"]] = copy.deepcopy(item)
 
-    for item in update_screens:
+    for idx, item in enumerate(update_screens):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "update_screens items must be objects.")
         extra_u = set(item.keys()) - UPDATE_SCREEN_KEYS
         if extra_u:
-            raise ValidationError("unknown_key", "update_screens item has unknown keys.")
+            raise _unknown_keys(
+                f"update_screens[{idx}]",
+                extra_u,
+                hint="Use id and optional title, columns, nav, related, scopes, groups, empty, or layout_id.",
+            )
         sid = item.get("id")
         if not _is_name(sid) or sid not in screen_by_id:
             raise ValidationError("bad_name", "update_screens id is missing.")
@@ -668,12 +692,16 @@ def validate_diff(
                 "bad_name", "app.home must be a list or layout screen id."
             )
 
-    for item in extend_enums:
+    for idx, item in enumerate(extend_enums):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "extend_enums items must be objects.")
         extra_e = set(item.keys()) - {"table", "column", "add_values"}
         if extra_e:
-            raise ValidationError("unknown_key", "extend_enums has unknown keys.")
+            raise _unknown_keys(
+                f"extend_enums[{idx}]",
+                extra_e,
+                hint="Use table, column, and add_values only.",
+            )
         tname = item.get("table")
         cname = item.get("column")
         values = item.get("add_values")
@@ -692,12 +720,16 @@ def validate_diff(
         if not isinstance(col.get("enum"), list):
             raise ValidationError("bad_name", f"Column {cname} has no enum.")
 
-    for item in update_labels:
+    for idx, item in enumerate(update_labels):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "update_labels items must be objects.")
         extra_u = set(item.keys()) - {"table", "column", "label"}
         if extra_u:
-            raise ValidationError("unknown_key", "update_labels has unknown keys.")
+            raise _unknown_keys(
+                f"update_labels[{idx}]",
+                extra_u,
+                hint="Use table with label, or table, column, and label.",
+            )
         tname = item.get("table")
         if not _is_name(tname) or tname not in ptables:
             raise ValidationError("bad_name", "update_labels table is missing.")
@@ -708,12 +740,16 @@ def validate_diff(
         if "label" in item and not isinstance(item.get("label"), str):
             raise ValidationError("bad_name", "update_labels label must be a string.")
 
-    for item in hide_columns:
+    for idx, item in enumerate(hide_columns):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "hide_columns items must be objects.")
         extra_h = set(item.keys()) - {"table", "column"}
         if extra_h:
-            raise ValidationError("unknown_key", "hide_columns has unknown keys.")
+            raise _unknown_keys(
+                f"hide_columns[{idx}]",
+                extra_h,
+                hint="Use table and column only.",
+            )
         tname = item.get("table")
         cname = item.get("column")
         if not _is_name(tname) or tname not in ptables:
@@ -864,12 +900,16 @@ def _validate_hooks_diff(
     existing_ids = _hook_ids(hooks_registry)
     new_ids: set[str] = set()
 
-    for item in add_hooks:
+    for idx, item in enumerate(add_hooks):
         if not isinstance(item, dict):
             raise ValidationError("bad_hook", "add_hooks items must be objects.")
         extra = set(item.keys()) - ADD_HOOK_KEYS
         if extra:
-            raise ValidationError("unknown_key", "add_hooks item has unknown keys.")
+            raise _unknown_keys(
+                f"add_hooks[{idx}]",
+                extra,
+                hint="Use id, on, code, and table (CRUD hooks only).",
+            )
         hid = item.get("id")
         tname = item.get("table")
         event = item.get("on")
@@ -889,12 +929,16 @@ def _validate_hooks_diff(
             raise ValidationError("bad_hook", f"Hook table {tname} is missing.")
         _check_hook_code(item.get("code"), filename=f"{hid}.py")
 
-    for item in update_hooks:
+    for idx, item in enumerate(update_hooks):
         if not isinstance(item, dict):
             raise ValidationError("bad_hook", "update_hooks items must be objects.")
         extra = set(item.keys()) - UPDATE_HOOK_KEYS
         if extra:
-            raise ValidationError("unknown_key", "update_hooks item has unknown keys.")
+            raise _unknown_keys(
+                f"update_hooks[{idx}]",
+                extra,
+                hint="Use id, code, and optional enabled only.",
+            )
         hid = item.get("id")
         if not _is_name(hid) or hid not in existing_ids:
             raise ValidationError("bad_hook", f"Hook {hid} does not exist.")
@@ -921,12 +965,16 @@ def _check_groups(tables: dict[str, Any], form_table: Any, groups: Any) -> None:
     cmap = _column_map(tables[form_table])
     seen_ids: set[str] = set()
     seen_cols: set[str] = set()
-    for item in groups:
+    for idx, item in enumerate(groups):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "groups items must be objects.")
         extra = set(item.keys()) - GROUP_KEYS
         if extra:
-            raise ValidationError("unknown_key", "groups item has unknown keys.")
+            raise _unknown_keys(
+                f"groups[{idx}]",
+                extra,
+                hint="Use id, label, and columns only.",
+            )
         gid = item.get("id")
         if not _is_name(gid):
             raise ValidationError("bad_name", "Group id is not snake_case.")
@@ -958,12 +1006,16 @@ def _check_scopes(tables: dict[str, Any], list_table: Any, scopes: Any) -> None:
         raise ValidationError("bad_name", "scopes list table is missing.")
     cmap = _column_map(tables[list_table])
     seen: set[str] = set()
-    for item in scopes:
+    for idx, item in enumerate(scopes):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "scopes items must be objects.")
         extra = set(item.keys()) - SCOPE_KEYS
         if extra:
-            raise ValidationError("unknown_key", "scopes item has unknown keys.")
+            raise _unknown_keys(
+                f"scopes[{idx}]",
+                extra,
+                hint="Use id, label, and optional column and value.",
+            )
         sid = item.get("id")
         if not _is_name(sid):
             raise ValidationError("bad_name", "Scope id is not snake_case.")
@@ -1007,12 +1059,16 @@ def _check_related(tables: dict[str, Any], form_table: Any, related: Any) -> Non
         raise ValidationError("bad_name", "related must be an array.")
     if not _is_name(form_table) or form_table not in tables:
         raise ValidationError("bad_name", "related form table is missing.")
-    for item in related:
+    for idx, item in enumerate(related):
         if not isinstance(item, dict):
             raise ValidationError("bad_name", "related items must be objects.")
         extra = set(item.keys()) - RELATED_KEYS
         if extra:
-            raise ValidationError("unknown_key", "related item has unknown keys.")
+            raise _unknown_keys(
+                f"related[{idx}]",
+                extra,
+                hint="Use table, fk, title, columns, and optional empty only.",
+            )
         tname = item.get("table")
         fk_name = item.get("fk")
         if not _is_name(tname) or tname not in tables:
