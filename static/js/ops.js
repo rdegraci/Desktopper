@@ -9,6 +9,9 @@
   var summaryEl = document.getElementById("intent-summary");
   var hintEl = document.getElementById("intent-hint");
   var errorEl = document.getElementById("intent-error");
+  var errorDetailEl = document.getElementById("intent-error-detail");
+  var rejectedDiffEl = document.getElementById("intent-rejected-diff");
+  var rejectedDiffPre = document.getElementById("intent-rejected-diff-pre");
   var copyBtn = document.getElementById("copy-logs");
   var logsEl = document.getElementById("logs-text");
   var hookPreviewEl = document.getElementById("hook-preview");
@@ -44,6 +47,68 @@
     }
     errorEl.hidden = false;
     errorEl.textContent = msg;
+  }
+
+  function formatDetailSummary(detail) {
+    if (!detail || typeof detail !== "object") {
+      return "";
+    }
+    var parts = [];
+    if (detail.path) {
+      parts.push(detail.path);
+    }
+    if (detail.unknown_keys && detail.unknown_keys.length) {
+      parts.push("unknown keys " + detail.unknown_keys.join(", "));
+    }
+    if (detail.column) {
+      parts.push("column " + detail.column);
+    }
+    if (detail.bad_type !== undefined) {
+      parts.push("bad type " + String(detail.bad_type));
+    }
+    var line = parts.join(": ");
+    if (detail.hint) {
+      line = line ? line + " — " + detail.hint : detail.hint;
+    }
+    return line;
+  }
+
+  function clearIntentError() {
+    showError("");
+    if (errorDetailEl) {
+      errorDetailEl.hidden = true;
+      errorDetailEl.textContent = "";
+    }
+    if (rejectedDiffEl) {
+      rejectedDiffEl.hidden = true;
+    }
+    if (rejectedDiffPre) {
+      rejectedDiffPre.textContent = "";
+    }
+  }
+
+  function showIntentError(body) {
+    var msg = body && body.error ? body.error : "Intent failed.";
+    showError(msg);
+    var detailLine = formatDetailSummary(body && body.detail);
+    if (errorDetailEl) {
+      if (detailLine) {
+        errorDetailEl.hidden = false;
+        errorDetailEl.textContent = detailLine;
+      } else {
+        errorDetailEl.hidden = true;
+        errorDetailEl.textContent = "";
+      }
+    }
+    if (rejectedDiffEl && rejectedDiffPre) {
+      if (body && body.rejected_diff) {
+        rejectedDiffEl.hidden = false;
+        rejectedDiffPre.textContent = JSON.stringify(body.rejected_diff, null, 2);
+      } else {
+        rejectedDiffEl.hidden = true;
+        rejectedDiffPre.textContent = "";
+      }
+    }
   }
 
   function showHookEditorError(msg) {
@@ -261,7 +326,7 @@
   if (formEl) {
     formEl.addEventListener("submit", function (ev) {
       ev.preventDefault();
-      showError("");
+      clearIntentError();
       setText(summaryEl, "");
       if (hintEl) {
         hintEl.hidden = true;
@@ -284,10 +349,7 @@
         .then(function (result) {
           loadLogs();
           if (!result.ok) {
-            var err = result.body && result.body.error
-              ? result.body.error
-              : "Intent failed.";
-            showError(err);
+            showIntentError(result.body);
             return;
           }
           var summary =

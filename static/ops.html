@@ -43,6 +43,14 @@
         Refresh the App tab to see the change.
       </p>
       <p class="text-danger" id="intent-error" hidden></p>
+      <p class="text-danger small mb-1" id="intent-error-detail" hidden></p>
+      <details id="intent-rejected-diff" class="mt-2" hidden>
+        <summary>What the model returned</summary>
+        <pre
+          class="bg-light border rounded p-2 small mb-0"
+          id="intent-rejected-diff-pre"
+        ></pre>
+      </details>
       <div id="hook-preview" class="mt-3" hidden>
         <label class="form-label" for="hook-preview-text">Hook changes</label>
         <textarea
