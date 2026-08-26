@@ -1,23 +1,35 @@
 import unittest
 from pathlib import Path
 
-from app.system_prompt import SYSTEM_PROMPT, load_system_prompt
+from app.system_prompt import FINAL_SYSTEM_PROMPT, SYSTEM_PROMPT, load_system_prompt
 
 
 class SystemPromptTests(unittest.TestCase):
-    def test_prompt_comes_from_app_module(self) -> None:
-        text = load_system_prompt()
+    def test_load_returns_final_prompt(self) -> None:
+        self.assertEqual(load_system_prompt(), FINAL_SYSTEM_PROMPT)
+
+    def test_system_prompt_is_alias(self) -> None:
+        self.assertEqual(SYSTEM_PROMPT, FINAL_SYSTEM_PROMPT)
+
+    def test_final_sections_present(self) -> None:
+        text = FINAL_SYSTEM_PROMPT
         self.assertIn("spec editor", text)
         self.assertIn("add_tables", text)
         self.assertIn("add_formulas", text)
         self.assertIn("add_reminders", text)
         self.assertIn("add_layouts", text)
         self.assertIn("update_columns", text)
-        self.assertIn("add_columns", text)
         self.assertIn("remove_columns", text)
-        final_path = Path("docs/cache/FINAL-PROMPT.md")
-        if final_path.is_file():
-            self.assertIn("formulas, rules, reminders", text)
+        self.assertIn('"type": "layout"', text)
+        self.assertIn("layout_id", text)
+        self.assertIn("add_hooks", text)
+        self.assertNotIn("ignore those parts", text)
+
+    def test_no_cache_read_in_loader(self) -> None:
+        src = Path("app/system_prompt.py").read_text(encoding="utf-8")
+        self.assertNotIn("read_text", src)
+        self.assertNotIn("Path(", src)
+        self.assertIn("return FINAL_SYSTEM_PROMPT", src)
 
     def test_llm_and_intent_do_not_read_cache(self) -> None:
         llm = Path("app/llm.py").read_text(encoding="utf-8")
