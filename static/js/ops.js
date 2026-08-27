@@ -159,17 +159,46 @@
         })
       );
     }
-    if (entry.role === "assistant" && entry.action === "failed" && entry.rejected_diff) {
-      var details = el("details", { className: "mt-2" });
-      details.appendChild(el("summary", { text: "What the model returned" }));
-      var pre = el("pre", {
-        className: "bg-white border rounded p-2 small mb-0",
-        text: JSON.stringify(entry.rejected_diff, null, 2),
+    if (entry.role === "assistant" && entry.action === "failed") {
+      if (entry.rejected_diff) {
+        var failDetails = el("details", { className: "mt-2" });
+        failDetails.appendChild(el("summary", { text: "What the model returned" }));
+        failDetails.appendChild(
+          el("pre", {
+            className: "bg-white border rounded p-2 small mb-0",
+            text: JSON.stringify(entry.rejected_diff, null, 2),
+          })
+        );
+        wrap.appendChild(failDetails);
+      }
+      var retryBtn = el("button", {
+        type: "button",
+        className: "btn btn-sm btn-outline-secondary mt-2",
+        text: "Edit and retry",
       });
-      details.appendChild(pre);
-      wrap.appendChild(details);
+      retryBtn.addEventListener("click", function () {
+        editAndRetry(entry);
+      });
+      wrap.appendChild(retryBtn);
     }
     return wrap;
+  }
+
+  function editAndRetry(entry) {
+    if (!textEl) {
+      return;
+    }
+    var prompt = "Fix this schema change: ";
+    if (entry && entry.message) {
+      prompt += entry.message;
+    } else {
+      prompt += "the previous request failed validation.";
+    }
+    if (entry && entry.rejected_diff) {
+      prompt += " Adjust the diff so it validates.";
+    }
+    textEl.value = prompt;
+    textEl.focus();
   }
 
   function renderThread(entries) {

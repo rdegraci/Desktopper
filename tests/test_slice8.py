@@ -186,6 +186,7 @@ class Slice8OpsJsTests(unittest.TestCase):
         self.assertIn("renderThread", self.src)
         self.assertIn("sendIntent", self.src)
         self.assertIn("applyProposedDiff", self.src)
+        self.assertIn("editAndRetry", self.src)
         self.assertIn('mode: "repl"', self.src)
         self.assertIn("spinner-border", self.html)
         self.assertIn("d-none", self.html)
