@@ -28,6 +28,7 @@
   var currentHook = null;
   var hooksList = [];
   var schemaVersion = 0;
+  var activeUiContext = null;
 
   function el(tag, attrs) {
     var node = document.createElement(tag);
@@ -64,6 +65,38 @@
     return el("span", { className: "badge " + cls + " me-2", text: label });
   }
 
+  function formatValidationErrors(validation) {
+    if (!validation || validation.ok || !validation.errors) {
+      return "";
+    }
+    return validation.errors
+      .map(function (err) {
+        var line = err.message || err.code || "Validation error.";
+        if (err.detail && err.detail.path) {
+          line = err.detail.path + ": " + line;
+        }
+        return line;
+      })
+      .join("\n");
+  }
+
+  function buildHistoryFromThread(entries) {
+    var history = [];
+    (entries || []).forEach(function (entry) {
+      if (entry.role === "user") {
+        history.push({ role: "user", content: entry.text || "" });
+      } else if (entry.role === "assistant") {
+        history.push({
+          role: "assistant",
+          content: entry.message || "",
+          action: entry.action,
+          version: entry.version,
+        });
+      }
+    });
+    return history;
+  }
+
   function renderThreadEntry(entry) {
     var wrap = el("div", { className: "mb-3" });
     var head = el("div", { className: "d-flex align-items-center mb-1" });
@@ -76,6 +109,48 @@
     wrap.appendChild(head);
     var bodyText = entry.text || entry.message || "";
     wrap.appendChild(el("div", { text: bodyText }));
+    if (entry.role === "assistant" && entry.action === "clarify" && entry.open_questions && entry.open_questions.length) {
+      var ul = el("ul", { className: "small mb-0 mt-2" });
+      entry.open_questions.forEach(function (q) {
+        ul.appendChild(el("li", { text: String(q) }));
+      });
+      wrap.appendChild(ul);
+    }
+    if (entry.role === "assistant" && entry.action === "propose") {
+      var validation = entry.validation;
+      if (validation && validation.ok) {
+        wrap.appendChild(el("div", { className: "small text-success mt-1", text: "Would apply cleanly." }));
+      } else if (validation && !validation.ok) {
+        wrap.appendChild(
+          el("div", {
+            className: "small text-danger mt-1",
+            text: formatValidationErrors(validation),
+          })
+        );
+      }
+      if (entry.proposed_diff) {
+        var diffDetails = el("details", { className: "mt-2" });
+        diffDetails.appendChild(el("summary", { text: "Proposed diff" }));
+        diffDetails.appendChild(
+          el("pre", {
+            className: "bg-white border rounded p-2 small mb-0",
+            text: JSON.stringify(entry.proposed_diff, null, 2),
+          })
+        );
+        wrap.appendChild(diffDetails);
+        if (validation && validation.ok) {
+          var applyBtn = el("button", {
+            type: "button",
+            className: "btn btn-sm btn-primary mt-2",
+            text: "Apply this plan",
+          });
+          applyBtn.addEventListener("click", function () {
+            applyProposedDiff(entry.proposed_diff);
+          });
+          wrap.appendChild(applyBtn);
+        }
+      }
+    }
     if (entry.role === "assistant" && entry.action === "apply" && entry.version !== undefined) {
       wrap.appendChild(
         el("div", {
@@ -125,6 +200,119 @@
     }
     var nonEmpty = entries && entries.length > 0;
     threadBannerEl.hidden = !(schemaVersion === 0 && nonEmpty);
+  }
+
+  function applyProposedDiff(diff) {
+    setBusy(true);
+    fetch("/api/intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "repl", apply_diff: diff }),
+    })
+      .then(function (res) {
+        return res.json().then(function (body) {
+          return { ok: res.ok, body: body };
+        });
+      })
+      .then(function (result) {
+        loadLogs();
+        loadThread();
+        if (!result.ok) {
+          return;
+        }
+        loadReminders();
+        if (result.body && result.body.version !== undefined) {
+          schemaVersion = result.body.version;
+          setVersion(result.body.version);
+        }
+        var changed = (result.body && result.body.hooks_changed) || [];
+        if (changed.length) {
+          showHookPreview(changed, null);
+        }
+        loadHooks();
+        closeHookEditor();
+      })
+      .catch(function () {
+        loadLogs();
+        loadThread();
+      })
+      .then(function () {
+        setBusy(false);
+      });
+  }
+
+  function sendIntent(text) {
+    setBusy(true);
+    return fetch("/api/ops/thread")
+      .then(function (res) {
+        return res.ok ? res.json() : { entries: [] };
+      })
+      .then(function (data) {
+        var payload = {
+          text: text,
+          mode: "repl",
+          history: buildHistoryFromThread(data.entries || []),
+        };
+        if (activeUiContext) {
+          payload.ui_context = activeUiContext;
+        }
+        return fetch("/api/intent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      })
+      .then(function (res) {
+        return res.json().then(function (body) {
+          return { ok: res.ok, status: res.status, body: body };
+        });
+      })
+      .then(function (result) {
+        loadLogs();
+        loadThread();
+        if (!result.ok) {
+          return result;
+        }
+        loadReminders();
+        var changed = (result.body && result.body.hooks_changed) || [];
+        if (changed.length) {
+          showHookPreview(changed, null);
+          changed.forEach(function (item) {
+            if (item.action === "add" || item.action === "update") {
+              fetch("/api/hooks/" + encodeURIComponent(item.id))
+                .then(function (res) {
+                  return res.ok ? res.json() : null;
+                })
+                .then(function (hook) {
+                  if (!hook || !hookPreviewText) {
+                    return;
+                  }
+                  var block =
+                    "\n--- " + hook.id + " ---\n" + (hook.code || "");
+                  hookPreviewText.value += block;
+                });
+            }
+          });
+        }
+        if (result.body && result.body.version !== undefined) {
+          schemaVersion = result.body.version;
+          setVersion(result.body.version);
+        }
+        if (textEl) {
+          textEl.value = "";
+        }
+        loadHooks();
+        closeHookEditor();
+        return result;
+      })
+      .catch(function () {
+        loadLogs();
+        loadThread();
+      })
+      .then(function (result) {
+        setBusy(false);
+        return result;
+      });
   }
 
   function loadThread() {
@@ -430,64 +618,7 @@
       if (!text) {
         return;
       }
-      setBusy(true);
-      fetch("/api/intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: text }),
-      })
-        .then(function (res) {
-          return res.json().then(function (body) {
-            return { ok: res.ok, status: res.status, body: body };
-          });
-        })
-        .then(function (result) {
-          loadLogs();
-          loadThread();
-          if (!result.ok) {
-            return;
-          }
-          loadReminders();
-          var changed = (result.body && result.body.hooks_changed) || [];
-          if (changed.length) {
-            showHookPreview(changed, null);
-            changed.forEach(function (item) {
-              if (item.action === "add" || item.action === "update") {
-                fetch("/api/hooks/" + encodeURIComponent(item.id))
-                  .then(function (res) {
-                    return res.ok ? res.json() : null;
-                  })
-                  .then(function (hook) {
-                    if (!hook || !hookPreviewText) {
-                      return;
-                    }
-                    var block =
-                      "\n--- " +
-                      hook.id +
-                      " ---\n" +
-                      (hook.code || "");
-                    hookPreviewText.value += block;
-                  });
-              }
-            });
-          }
-          if (result.body && result.body.version !== undefined) {
-            schemaVersion = result.body.version;
-            setVersion(result.body.version);
-          }
-          if (textEl) {
-            textEl.value = "";
-          }
-          loadHooks();
-          closeHookEditor();
-        })
-        .catch(function () {
-          loadLogs();
-          loadThread();
-        })
-        .then(function () {
-          setBusy(false);
-        });
+      sendIntent(text);
     });
   }
 

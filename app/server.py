@@ -50,7 +50,7 @@ from app.reminders import (
 )
 from app.sync import export_events, import_batch, sync_status
 from app.tick import scheduler_status, start_scheduler
-from app.intent import run_intent
+from app.intent import run_intent, run_intent_repl
 from app.llm import LlmError, public_error_message
 from app.ops_thread import append_entry, clear_thread, read_thread, thread_timestamp
 from app.search import global_search, list_rows_search
@@ -471,36 +471,67 @@ def create_app(*, llm_complete=None) -> Flask:
         body = request.get_json(silent=True)
         if not isinstance(body, dict):
             return jsonify({"error": "JSON object required.", "error_code": "invalid_json"}), 400
+
+        mode = body.get("mode") or "apply"
+        apply_diff_payload = body.get("apply_diff")
         text = body.get("text")
-        if not isinstance(text, str) or not text.strip():
-            return jsonify({"error": "text is required.", "error_code": "invalid_json"}), 400
-        text = text.strip()
         ui_context = body.get("ui_context")
+        history = body.get("history")
+
+        if apply_diff_payload is None:
+            if not isinstance(text, str) or not text.strip():
+                return jsonify({"error": "text is required.", "error_code": "invalid_json"}), 400
+            text = text.strip()
+        else:
+            text = text.strip() if isinstance(text, str) else ""
+
         user_entry: dict[str, object] = {
             "ts": thread_timestamp(),
             "role": "user",
-            "text": text,
+            "text": text or "(apply plan)",
         }
         if ui_context is not None:
             user_entry["ui_context"] = ui_context
-        append_entry(cfg.appdir, user_entry)
+        if apply_diff_payload is None:
+            append_entry(cfg.appdir, user_entry)
+        elif mode == "repl":
+            append_entry(cfg.appdir, user_entry)
+
+        def _append_assistant(entry: dict[str, object]) -> None:
+            append_entry(cfg.appdir, entry)
+
         try:
-            result = run_intent(
-                cfg,
-                text,
-                request_id=g.request_id,
-                complete=flask_app.config.get("LLM_COMPLETE"),
-            )
+            if mode == "repl":
+                result = run_intent_repl(
+                    cfg,
+                    text,
+                    history=history if isinstance(history, list) else None,
+                    ui_context=ui_context if isinstance(ui_context, dict) else None,
+                    apply_diff_payload=apply_diff_payload if isinstance(apply_diff_payload, dict) else None,
+                    request_id=g.request_id,
+                    complete=flask_app.config.get("LLM_COMPLETE"),
+                )
+            else:
+                if apply_diff_payload is not None:
+                    return jsonify(
+                        {"error": "apply_diff requires mode repl.", "error_code": "invalid_json"}
+                    ), 400
+                result = run_intent(
+                    cfg,
+                    text,
+                    request_id=g.request_id,
+                    complete=flask_app.config.get("LLM_COMPLETE"),
+                )
         except LlmError as exc:
-            append_entry(
-                cfg.appdir,
-                {
-                    "ts": thread_timestamp(),
-                    "role": "assistant",
-                    "action": "failed",
-                    "message": public_error_message(exc),
-                },
-            )
+            if apply_diff_payload is None:
+                _append_assistant(
+                    {
+                        "ts": thread_timestamp(),
+                        "role": "assistant",
+                        "action": "failed",
+                        "message": public_error_message(exc),
+                    }
+                )
             status = 503 if exc.error_code == "llm_down" else 400
             return jsonify(
                 {"error": public_error_message(exc), "error_code": exc.error_code}
@@ -514,33 +545,54 @@ def create_app(*, llm_complete=None) -> Flask:
             }
             if isinstance(exc, IntentValidationError):
                 failed_entry["rejected_diff"] = exc.rejected_diff
-            append_entry(cfg.appdir, failed_entry)
+            if apply_diff_payload is None or mode == "repl":
+                _append_assistant(failed_entry)
             payload: dict[str, object] = {"error": exc.msg, "error_code": exc.error_code}
             if exc.detail:
                 payload["detail"] = exc.detail
             if isinstance(exc, IntentValidationError):
                 payload["rejected_diff"] = exc.rejected_diff
-            return jsonify(payload), 400
+            status = 422 if mode == "repl" else 400
+            return jsonify(payload), status
         except EngineError as exc:
-            append_entry(
-                cfg.appdir,
-                {
-                    "ts": thread_timestamp(),
-                    "role": "assistant",
-                    "action": "failed",
-                    "message": exc.msg,
-                },
-            )
-            return jsonify({"error": exc.msg, "error_code": exc.error_code}), 500
-        append_entry(
-            cfg.appdir,
+            if apply_diff_payload is None or mode == "repl":
+                _append_assistant(
+                    {
+                        "ts": thread_timestamp(),
+                        "role": "assistant",
+                        "action": "failed",
+                        "message": exc.msg,
+                    }
+                )
+            status = 422 if mode == "repl" else 500
+            return jsonify({"error": exc.msg, "error_code": exc.error_code}), status
+
+        if mode == "repl":
+            assistant_entry: dict[str, object] = {
+                "ts": thread_timestamp(),
+                "role": "assistant",
+                "action": result.get("action") or "apply",
+                "message": result.get("message") or result.get("summary") or "",
+            }
+            if result.get("version") is not None:
+                assistant_entry["version"] = result.get("version")
+            if result.get("proposed_diff") is not None:
+                assistant_entry["proposed_diff"] = result.get("proposed_diff")
+            if result.get("validation") is not None:
+                assistant_entry["validation"] = result.get("validation")
+            if result.get("open_questions"):
+                assistant_entry["open_questions"] = result.get("open_questions")
+            _append_assistant(assistant_entry)
+            return jsonify(result)
+
+        _append_assistant(
             {
                 "ts": thread_timestamp(),
                 "role": "assistant",
                 "action": "apply",
                 "message": result.get("summary") or "Applied spec.",
                 "version": result.get("version"),
-            },
+            }
         )
         return jsonify(result)
 
