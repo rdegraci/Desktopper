@@ -52,6 +52,7 @@ from app.sync import export_events, import_batch, sync_status
 from app.tick import scheduler_status, start_scheduler
 from app.intent import run_intent
 from app.llm import LlmError, public_error_message
+from app.ops_thread import append_entry, clear_thread, read_thread, thread_timestamp
 from app.search import global_search, list_rows_search
 from app.log import (
     emit,
@@ -456,6 +457,15 @@ def create_app(*, llm_complete=None) -> Flask:
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
+    @flask_app.get("/api/ops/thread")
+    def api_ops_thread_get():
+        return jsonify({"entries": read_thread(cfg.appdir)})
+
+    @flask_app.delete("/api/ops/thread")
+    def api_ops_thread_clear():
+        clear_thread(cfg.appdir)
+        return jsonify({"ok": True})
+
     @flask_app.post("/api/intent")
     def api_intent():
         body = request.get_json(silent=True)
@@ -464,19 +474,47 @@ def create_app(*, llm_complete=None) -> Flask:
         text = body.get("text")
         if not isinstance(text, str) or not text.strip():
             return jsonify({"error": "text is required.", "error_code": "invalid_json"}), 400
+        text = text.strip()
+        ui_context = body.get("ui_context")
+        user_entry: dict[str, object] = {
+            "ts": thread_timestamp(),
+            "role": "user",
+            "text": text,
+        }
+        if ui_context is not None:
+            user_entry["ui_context"] = ui_context
+        append_entry(cfg.appdir, user_entry)
         try:
             result = run_intent(
                 cfg,
-                text.strip(),
+                text,
                 request_id=g.request_id,
                 complete=flask_app.config.get("LLM_COMPLETE"),
             )
         except LlmError as exc:
+            append_entry(
+                cfg.appdir,
+                {
+                    "ts": thread_timestamp(),
+                    "role": "assistant",
+                    "action": "failed",
+                    "message": public_error_message(exc),
+                },
+            )
             status = 503 if exc.error_code == "llm_down" else 400
             return jsonify(
                 {"error": public_error_message(exc), "error_code": exc.error_code}
             ), status
         except ValidationError as exc:
+            failed_entry: dict[str, object] = {
+                "ts": thread_timestamp(),
+                "role": "assistant",
+                "action": "failed",
+                "message": exc.msg,
+            }
+            if isinstance(exc, IntentValidationError):
+                failed_entry["rejected_diff"] = exc.rejected_diff
+            append_entry(cfg.appdir, failed_entry)
             payload: dict[str, object] = {"error": exc.msg, "error_code": exc.error_code}
             if exc.detail:
                 payload["detail"] = exc.detail
@@ -484,7 +522,26 @@ def create_app(*, llm_complete=None) -> Flask:
                 payload["rejected_diff"] = exc.rejected_diff
             return jsonify(payload), 400
         except EngineError as exc:
+            append_entry(
+                cfg.appdir,
+                {
+                    "ts": thread_timestamp(),
+                    "role": "assistant",
+                    "action": "failed",
+                    "message": exc.msg,
+                },
+            )
             return jsonify({"error": exc.msg, "error_code": exc.error_code}), 500
+        append_entry(
+            cfg.appdir,
+            {
+                "ts": thread_timestamp(),
+                "role": "assistant",
+                "action": "apply",
+                "message": result.get("summary") or "Applied spec.",
+                "version": result.get("version"),
+            },
+        )
         return jsonify(result)
 
     return flask_app

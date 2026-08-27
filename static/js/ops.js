@@ -1,17 +1,14 @@
 (function () {
   var titleEl = document.getElementById("app-title");
   var versionEl = document.getElementById("schema-version");
+  var threadEl = document.getElementById("ops-thread");
+  var threadBannerEl = document.getElementById("ops-thread-banner");
+  var clearThreadBtn = document.getElementById("ops-thread-clear");
   var formEl = document.getElementById("intent-form");
   var textEl = document.getElementById("intent-text");
   var submitEl = document.getElementById("intent-submit");
   var busyEl = document.getElementById("intent-busy");
   var busyLabelEl = document.getElementById("intent-busy-label");
-  var summaryEl = document.getElementById("intent-summary");
-  var hintEl = document.getElementById("intent-hint");
-  var errorEl = document.getElementById("intent-error");
-  var errorDetailEl = document.getElementById("intent-error-detail");
-  var rejectedDiffEl = document.getElementById("intent-rejected-diff");
-  var rejectedDiffPre = document.getElementById("intent-rejected-diff-pre");
   var bootstrapHintEl = document.getElementById("intent-bootstrap-hint");
   var copyBtn = document.getElementById("copy-logs");
   var logsEl = document.getElementById("logs-text");
@@ -30,24 +27,129 @@
 
   var currentHook = null;
   var hooksList = [];
+  var schemaVersion = 0;
+
+  function el(tag, attrs) {
+    var node = document.createElement(tag);
+    if (attrs) {
+      Object.keys(attrs).forEach(function (key) {
+        if (key === "text") {
+          node.textContent = attrs[key];
+        } else if (key === "className") {
+          node.className = attrs[key];
+        } else {
+          node.setAttribute(key, attrs[key]);
+        }
+      });
+    }
+    return node;
+  }
+
+  function actionBadge(action) {
+    var label = "Message";
+    var cls = "bg-secondary";
+    if (action === "apply") {
+      label = "Applied";
+      cls = "bg-success";
+    } else if (action === "failed") {
+      label = "Failed";
+      cls = "bg-danger";
+    } else if (action === "propose") {
+      label = "Plan";
+      cls = "bg-primary";
+    } else if (action === "clarify") {
+      label = "Question";
+      cls = "bg-info text-dark";
+    }
+    return el("span", { className: "badge " + cls + " me-2", text: label });
+  }
+
+  function renderThreadEntry(entry) {
+    var wrap = el("div", { className: "mb-3" });
+    var head = el("div", { className: "d-flex align-items-center mb-1" });
+    if (entry.role === "user") {
+      head.appendChild(el("strong", { text: "You" }));
+    } else {
+      head.appendChild(actionBadge(entry.action || "apply"));
+      head.appendChild(el("strong", { text: "App" }));
+    }
+    wrap.appendChild(head);
+    var bodyText = entry.text || entry.message || "";
+    wrap.appendChild(el("div", { text: bodyText }));
+    if (entry.role === "assistant" && entry.action === "apply" && entry.version !== undefined) {
+      wrap.appendChild(
+        el("div", {
+          className: "small text-muted mt-1",
+          text: "Schema version " + String(entry.version) + ". Refresh the App tab.",
+        })
+      );
+    }
+    if (entry.role === "assistant" && entry.action === "failed" && entry.rejected_diff) {
+      var details = el("details", { className: "mt-2" });
+      details.appendChild(el("summary", { text: "What the model returned" }));
+      var pre = el("pre", {
+        className: "bg-white border rounded p-2 small mb-0",
+        text: JSON.stringify(entry.rejected_diff, null, 2),
+      });
+      details.appendChild(pre);
+      wrap.appendChild(details);
+    }
+    return wrap;
+  }
+
+  function renderThread(entries) {
+    if (!threadEl) {
+      return;
+    }
+    while (threadEl.firstChild) {
+      threadEl.removeChild(threadEl.firstChild);
+    }
+    if (!entries || !entries.length) {
+      threadEl.appendChild(
+        el("p", {
+          className: "text-muted small mb-0",
+          text: "No messages yet. Describe your app below.",
+        })
+      );
+      return;
+    }
+    entries.forEach(function (entry) {
+      threadEl.appendChild(renderThreadEntry(entry));
+    });
+    threadEl.scrollTop = threadEl.scrollHeight;
+  }
+
+  function updateThreadBanner(entries) {
+    if (!threadBannerEl) {
+      return;
+    }
+    var nonEmpty = entries && entries.length > 0;
+    threadBannerEl.hidden = !(schemaVersion === 0 && nonEmpty);
+  }
+
+  function loadThread() {
+    return fetch("/api/ops/thread")
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("thread");
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        var entries = data.entries || [];
+        renderThread(entries);
+        updateThreadBanner(entries);
+        return entries;
+      })
+      .catch(function () {
+        renderThread([]);
+      });
+  }
 
   function setText(node, value) {
     if (node) {
       node.textContent = value || "";
     }
-  }
-
-  function showError(msg) {
-    if (!errorEl) {
-      return;
-    }
-    if (!msg) {
-      errorEl.hidden = true;
-      errorEl.textContent = "";
-      return;
-    }
-    errorEl.hidden = false;
-    errorEl.textContent = msg;
   }
 
   function formatDetailSummary(detail) {
@@ -74,42 +176,13 @@
     return line;
   }
 
-  function clearIntentError() {
-    showError("");
-    if (errorDetailEl) {
-      errorDetailEl.hidden = true;
-      errorDetailEl.textContent = "";
-    }
-    if (rejectedDiffEl) {
-      rejectedDiffEl.hidden = true;
-    }
-    if (rejectedDiffPre) {
-      rejectedDiffPre.textContent = "";
-    }
-  }
-
-  function showIntentError(body) {
+  function formatIntentFailureMessage(body) {
     var msg = body && body.error ? body.error : "Intent failed.";
-    showError(msg);
     var detailLine = formatDetailSummary(body && body.detail);
-    if (errorDetailEl) {
-      if (detailLine) {
-        errorDetailEl.hidden = false;
-        errorDetailEl.textContent = detailLine;
-      } else {
-        errorDetailEl.hidden = true;
-        errorDetailEl.textContent = "";
-      }
+    if (detailLine) {
+      return msg + " — " + detailLine;
     }
-    if (rejectedDiffEl && rejectedDiffPre) {
-      if (body && body.rejected_diff) {
-        rejectedDiffEl.hidden = false;
-        rejectedDiffPre.textContent = JSON.stringify(body.rejected_diff, null, 2);
-      } else {
-        rejectedDiffEl.hidden = true;
-        rejectedDiffPre.textContent = "";
-      }
-    }
+    return msg;
   }
 
   function showHookEditorError(msg) {
@@ -301,6 +374,7 @@
       }
       document.title = "Ops — " + name;
       var ver = schema.version !== undefined ? schema.version : 0;
+      schemaVersion = ver;
       setVersion(ver);
       if (bootstrapHintEl) {
         var screens = schema.screens;
@@ -308,10 +382,26 @@
           ver === 0 || !Array.isArray(screens) || screens.length === 0;
         bootstrapHintEl.hidden = !emptySchema;
       }
+      return loadThread();
     })
-    .catch(function () {});
+    .catch(function () {
+      loadThread();
+    });
 
   loadHooks();
+
+  if (clearThreadBtn) {
+    clearThreadBtn.addEventListener("click", function () {
+      fetch("/api/ops/thread", { method: "DELETE" })
+        .then(function (res) {
+          if (!res.ok) {
+            throw new Error("clear");
+          }
+          return loadThread();
+        })
+        .catch(function () {});
+    });
+  }
 
   function loadLogs() {
     fetch("/api/logs")
@@ -333,15 +423,13 @@
   if (formEl) {
     formEl.addEventListener("submit", function (ev) {
       ev.preventDefault();
-      clearIntentError();
-      setText(summaryEl, "");
-      if (hintEl) {
-        hintEl.hidden = true;
-      }
       if (hookPreviewEl) {
         hookPreviewEl.hidden = true;
       }
-      var text = textEl ? textEl.value : "";
+      var text = textEl ? textEl.value.trim() : "";
+      if (!text) {
+        return;
+      }
       setBusy(true);
       fetch("/api/intent", {
         method: "POST",
@@ -355,24 +443,14 @@
         })
         .then(function (result) {
           loadLogs();
+          loadThread();
           if (!result.ok) {
-            showIntentError(result.body);
             return;
           }
-          var summary =
-            result.body && result.body.summary
-              ? result.body.summary
-              : "Applied spec.";
-          setText(summaryEl, summary);
           loadReminders();
           var changed = (result.body && result.body.hooks_changed) || [];
           if (changed.length) {
             showHookPreview(changed, null);
-            if (hintEl) {
-              hintEl.hidden = false;
-              hintEl.textContent =
-                "Hooks updated. Refresh the App tab if schema changed too.";
-            }
             changed.forEach(function (item) {
               if (item.action === "add" || item.action === "update") {
                 fetch("/api/hooks/" + encodeURIComponent(item.id))
@@ -392,19 +470,20 @@
                   });
               }
             });
-          } else if (hintEl) {
-            hintEl.hidden = false;
-            hintEl.textContent = "Refresh the App tab to see the change.";
           }
           if (result.body && result.body.version !== undefined) {
+            schemaVersion = result.body.version;
             setVersion(result.body.version);
+          }
+          if (textEl) {
+            textEl.value = "";
           }
           loadHooks();
           closeHookEditor();
         })
         .catch(function () {
           loadLogs();
-          showError("Intent request failed.");
+          loadThread();
         })
         .then(function () {
           setBusy(false);
