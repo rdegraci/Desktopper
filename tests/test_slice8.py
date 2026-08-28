@@ -191,6 +191,16 @@ class Slice8OpsJsTests(unittest.TestCase):
         self.assertIn("spinner-border", self.html)
         self.assertIn("d-none", self.html)
         self.assertIn("setBusy", self.src)
+        self.assertIn("expandOpsSection", self.src)
+        self.assertIn("setSectionCount", self.src)
+        self.assertIn("reminders-panel", self.html)
+        self.assertIn("hooks-panel", self.html)
+        self.assertIn("logs-panel", self.html)
+        self.assertIn("data-bs-toggle=\"collapse\"", self.html)
+        self.assertIn("ops-chevron", self.html)
+        self.assertIn("reminders-count", self.html)
+        self.assertIn("hooks-count", self.html)
+        self.assertIn("shown.bs.collapse", self.src)
 
 
 if __name__ == "__main__":

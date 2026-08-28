@@ -557,6 +557,40 @@
     }
   }
 
+  function expandOpsSection(panelId) {
+    var panel = document.getElementById(panelId);
+    if (!panel || !window.bootstrap) {
+      return;
+    }
+    var collapse = window.bootstrap.Collapse.getOrCreateInstance(panel, { toggle: false });
+    collapse.show();
+  }
+
+  function setSectionCount(node, count) {
+    if (!node) {
+      return;
+    }
+    if (!count) {
+      node.textContent = "";
+      return;
+    }
+    node.textContent = " (" + String(count) + ")";
+  }
+
+  var remindersCountEl = document.getElementById("reminders-count");
+  var hooksCountEl = document.getElementById("hooks-count");
+  var logsPanelEl = document.getElementById("logs-panel");
+  var logsLoaded = false;
+
+  if (logsPanelEl) {
+    logsPanelEl.addEventListener("shown.bs.collapse", function () {
+      if (!logsLoaded) {
+        logsLoaded = true;
+        loadLogs();
+      }
+    });
+  }
+
   function loadHooks() {
     return fetch("/api/hooks")
       .then(function (res) {
@@ -568,10 +602,12 @@
       .then(function (data) {
         hooksList = data.hooks || [];
         renderHooksTable();
+        setSectionCount(hooksCountEl, hooksList.length);
       })
       .catch(function () {
         hooksList = [];
         renderHooksTable();
+        setSectionCount(hooksCountEl, 0);
       });
   }
 
@@ -624,6 +660,7 @@
   }
 
   function openHookEditor(hookId) {
+    expandOpsSection("hooks-panel");
     showHookEditorError("");
     fetch("/api/hooks/" + encodeURIComponent(hookId))
       .then(function (res) {
@@ -685,6 +722,7 @@
     }
     hookPreviewText.value = lines.join("\n");
     hookPreviewEl.hidden = false;
+    expandOpsSection("hooks-panel");
   }
 
   fetch("/api/schema")
@@ -739,6 +777,7 @@
   }
 
   function loadLogs() {
+    logsLoaded = true;
     fetch("/api/logs")
       .then(function (res) {
         if (!res.ok) {
@@ -936,7 +975,9 @@
       .then(function (res) { return res.json(); })
       .then(function (data) {
         remindersTbody.textContent = "";
-        (data.reminders || []).forEach(function (rem) {
+        var reminders = data.reminders || [];
+        setSectionCount(remindersCountEl, reminders.length);
+        reminders.forEach(function (rem) {
           var tr = document.createElement("tr");
           function td(text) {
             var cell = document.createElement("td");
@@ -964,6 +1005,7 @@
   }
 
   function openReminderEditor(rem) {
+    expandOpsSection("reminders-panel");
     editingReminderId = rem ? rem.id : null;
     if (reminderEditor) reminderEditor.hidden = false;
     document.getElementById("reminder-id").value = rem ? rem.id : "";
