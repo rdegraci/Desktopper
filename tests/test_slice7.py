@@ -64,6 +64,16 @@ class Slice7AppJsTests(unittest.TestCase):
         self.assertIn("setFocusedTarget", self.src)
         self.assertIn("desktopper_ui_context", self.src)
 
+    def test_session_user_label(self) -> None:
+        self.assertIn("session-user", self.html)
+        self.assertIn("global-search-form", self.html)
+        self.assertIn("ops-link", self.html)
+        self.assertIn("/api/session", self.src)
+        self.assertIn("Signed in as", self.src)
+        self.assertIn("setSignedInNav", self.src)
+        self.assertIn("setNavElVisible", self.src)
+        self.assertIn("applySessionState", self.src)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -201,6 +201,11 @@ class Slice8OpsJsTests(unittest.TestCase):
         self.assertIn("reminders-count", self.html)
         self.assertIn("hooks-count", self.html)
         self.assertIn("shown.bs.collapse", self.src)
+        self.assertIn("/api/session", self.src)
+        self.assertIn("/api/users", self.src)
+        self.assertIn("loadSession", self.src)
+        self.assertIn("users-panel", self.html)
+        self.assertIn("users-count", self.html)
 
 
 if __name__ == "__main__":

@@ -51,16 +51,37 @@ def ensure_owner(cfg: AppConfig) -> None:
         cur = conn.execute("SELECT COUNT(*) FROM _users")
         if int(cur.fetchone()[0]) > 0:
             return
-        password = os.environ.get("DESKTOPPER_OWNER_PASSWORD", "").strip()
+        name = cfg.auth.owner_name.strip() or "admin"
+        password = cfg.auth.owner_password.strip()
         if not password:
             password = secrets.token_urlsafe(12)
+            print(f"Desktopper owner username (one-time): {name}", flush=True)
             print(f"Desktopper owner password (one-time): {password}", flush=True)
+        else:
+            print(
+                f"Desktopper owner account created: {name!r} (password from conf.yaml or .env)",
+                flush=True,
+            )
         now = _now_iso()
         conn.execute(
             "INSERT INTO _users (name, password_hash, role, created_at) VALUES (?, ?, ?, ?)",
-            ("owner", _hash_password(password), OWNER_ROLE, now),
+            (name, _hash_password(password), OWNER_ROLE, now),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def list_users(cfg: AppConfig) -> list[dict[str, Any]]:
+    conn = connect(cfg.appdir)
+    try:
+        cur = conn.execute(
+            "SELECT id, name, role, created_at FROM _users ORDER BY id"
+        )
+        return [
+            {"id": row[0], "name": row[1], "role": row[2], "created_at": row[3]}
+            for row in cur.fetchall()
+        ]
     finally:
         conn.close()
 
@@ -68,6 +89,8 @@ def ensure_owner(cfg: AppConfig) -> None:
 def create_user(cfg: AppConfig, name: str, password: str, role: str) -> dict[str, Any]:
     if not name or not password:
         raise ValueError("name and password required")
+    if role == OWNER_ROLE:
+        raise ValueError("cannot create owner role")
     conn = connect(cfg.appdir)
     try:
         conn.execute(

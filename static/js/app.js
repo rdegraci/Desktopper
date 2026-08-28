@@ -1418,6 +1418,54 @@
     var form = document.getElementById("login-form");
     var errEl = document.getElementById("login-error");
     var logoutBtn = document.getElementById("logout-btn");
+    var sessionUserEl = document.getElementById("session-user");
+    var searchFormEl = document.getElementById("global-search-form");
+    var opsLinkEl = document.getElementById("ops-link");
+    var discussOpsEl = document.getElementById("discuss-in-ops");
+
+    function setNavElVisible(el, visible) {
+      if (!el) {
+        return;
+      }
+      el.hidden = !visible;
+      el.classList.toggle("d-none", !visible);
+    }
+
+    function setSignedInNav(signedIn) {
+      setNavElVisible(searchFormEl, signedIn);
+      setNavElVisible(opsLinkEl, signedIn);
+      setNavElVisible(discussOpsEl, signedIn);
+    }
+
+    function applySessionState(user) {
+      var signedIn = !!(user && user.name);
+      if (sessionUserEl) {
+        if (!signedIn) {
+          sessionUserEl.hidden = true;
+          sessionUserEl.textContent = "";
+        } else {
+          sessionUserEl.textContent = "Signed in as " + String(user.name);
+          sessionUserEl.hidden = false;
+        }
+      }
+      setSignedInNav(signedIn);
+      if (logoutBtn) {
+        logoutBtn.hidden = !signedIn;
+      }
+    }
+
+    function loadSession() {
+      fetch("/api/session", { credentials: "same-origin" })
+        .then(function (res) {
+          return res.json();
+        })
+        .then(function (data) {
+          applySessionState(data.user || null);
+        })
+        .catch(function () {
+          applySessionState(null);
+        });
+    }
 
     function showLoginErr(msg) {
       if (!errEl) {
@@ -1466,9 +1514,7 @@
             if (panel) {
               panel.hidden = true;
             }
-            if (logoutBtn) {
-              logoutBtn.hidden = false;
-            }
+            applySessionState(result.body && result.body.user);
           })
           .catch(function () {
             showLoginErr("Login failed.");
@@ -1479,10 +1525,12 @@
     if (logoutBtn) {
       logoutBtn.addEventListener("click", function () {
         fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
-          logoutBtn.hidden = true;
+          applySessionState(null);
         });
       });
     }
+
+    loadSession();
   }
 
   function boot() {

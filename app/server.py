@@ -20,11 +20,13 @@ from app.crud import (
 )
 from app.engine import EngineError
 from app.auth import (
+    OWNER_ROLE,
     SESSION_COOKIE,
     check_grant,
     create_user,
     current_user,
     ensure_owner,
+    list_users,
     login,
     logout,
 )
@@ -420,10 +422,22 @@ def create_app(*, llm_complete=None) -> Flask:
         resp.delete_cookie(SESSION_COOKIE)
         return resp
 
+    @flask_app.get("/api/session")
+    def api_session():
+        user = getattr(g, "user", None)
+        return jsonify({"user": user})
+
+    @flask_app.get("/api/users")
+    def api_users_list():
+        user = getattr(g, "user", None)
+        if not user or user.get("role") != OWNER_ROLE:
+            return jsonify({"error": "forbidden"}), 403
+        return jsonify({"users": list_users(cfg)})
+
     @flask_app.post("/api/users")
     def api_users_create():
         user = getattr(g, "user", None)
-        if not user or user.get("role") != "owner":
+        if not user or user.get("role") != OWNER_ROLE:
             return jsonify({"error": "forbidden"}), 403
         body = request.get_json(silent=True) or {}
         try:

@@ -123,7 +123,9 @@ Describe both in Ops intent; there is no separate Ops editor for formulas or rul
 
 Users and roles live in the host database. Column **grants** in the schema hide fields per role. Home has a **Login** control in the navbar (`POST /api/login`, session cookie). Unauthenticated reads use the default guest role.
 
-Create additional users with `POST /api/users` (owner role only).
+On first run the host creates one **owner** account from `auth.owner` in `conf.yaml` (see `config.yaml.example`: default name and password `admin`). Override with `DESKTOPPER_OWNER_NAME` or `DESKTOPPER_OWNER_PASSWORD` in the appdir `.env`. If no password is configured, the server prints a one-time random password at startup.
+
+Create additional users on Ops (**Users** panel, owner session required) or with `POST /api/users`. List users with `GET /api/users` (owner only).
 
 ### CSV import
 

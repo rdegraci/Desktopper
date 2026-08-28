@@ -33,6 +33,13 @@ app:
   # Directory name under Application Support. Do not change after first run.
   support_name: "Desktopper"
 
+auth:
+  # First-run owner account (created when no users exist yet).
+  # Override with DESKTOPPER_OWNER_NAME / DESKTOPPER_OWNER_PASSWORD in .env.
+  owner:
+    name: admin
+    password: admin
+
 logging:
   # debug, info, warning, error
   level: "info"

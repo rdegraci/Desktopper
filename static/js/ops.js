@@ -579,6 +579,7 @@
 
   var remindersCountEl = document.getElementById("reminders-count");
   var hooksCountEl = document.getElementById("hooks-count");
+  var usersCountEl = document.getElementById("users-count");
   var logsPanelEl = document.getElementById("logs-panel");
   var logsLoaded = false;
 
@@ -755,10 +756,13 @@
           ver === 0 || !Array.isArray(screens) || screens.length === 0;
         bootstrapHintEl.hidden = !emptySchema;
       }
-      return loadThread();
+      return loadThread().then(function () {
+        loadSession();
+      });
     })
     .catch(function () {
       loadThread();
+      loadSession();
     });
 
   loadHooks();
@@ -1098,6 +1102,186 @@
 
   loadReminders();
   loadSchedulerStatus();
+
+  var usersTbody = document.getElementById("users-tbody");
+  var usersHintEl = document.getElementById("users-hint");
+  var usersOwnerUiEl = document.getElementById("users-owner-ui");
+  var userEditor = document.getElementById("user-editor");
+  var userNewBtn = document.getElementById("user-new");
+  var userSaveBtn = document.getElementById("user-save");
+  var userCancelBtn = document.getElementById("user-cancel");
+  var userEditorError = document.getElementById("user-editor-error");
+  var userRoleSelect = document.getElementById("user-role");
+  var sessionUser = null;
+
+  function showUserError(msg) {
+    if (!userEditorError) {
+      return;
+    }
+    if (!msg) {
+      userEditorError.hidden = true;
+      userEditorError.textContent = "";
+      return;
+    }
+    userEditorError.hidden = false;
+    userEditorError.textContent = msg;
+  }
+
+  function populateUserRoles() {
+    if (!userRoleSelect) {
+      return;
+    }
+    userRoleSelect.textContent = "";
+    var roles = ["guest"];
+    if (loadedSchema && Array.isArray(loadedSchema.roles)) {
+      loadedSchema.roles.forEach(function (role) {
+        if (role && role.name && role.name !== "owner" && roles.indexOf(role.name) === -1) {
+          roles.push(role.name);
+        }
+      });
+    }
+    roles.forEach(function (role) {
+      var opt = document.createElement("option");
+      opt.value = role;
+      opt.textContent = role;
+      userRoleSelect.appendChild(opt);
+    });
+  }
+
+  function loadUsers() {
+    if (!usersTbody) {
+      return;
+    }
+    fetch("/api/users", { credentials: "same-origin" })
+      .then(function (res) {
+        if (res.status === 403) {
+          return null;
+        }
+        if (!res.ok) {
+          throw new Error("users");
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (!data) {
+          return;
+        }
+        usersTbody.textContent = "";
+        var users = data.users || [];
+        setSectionCount(usersCountEl, users.length);
+        users.forEach(function (user) {
+          var tr = document.createElement("tr");
+          function td(text) {
+            var cell = document.createElement("td");
+            cell.textContent = text;
+            return cell;
+          }
+          tr.appendChild(td(user.name || ""));
+          tr.appendChild(td(user.role || ""));
+          tr.appendChild(td(user.created_at || ""));
+          usersTbody.appendChild(tr);
+        });
+      })
+      .catch(function () {});
+  }
+
+  function loadSession() {
+    fetch("/api/session", { credentials: "same-origin" })
+      .then(function (res) {
+        return res.json();
+      })
+      .then(function (data) {
+        sessionUser = data.user || null;
+        var isOwner = sessionUser && sessionUser.role === "owner";
+        if (usersHintEl) {
+          usersHintEl.hidden = isOwner;
+        }
+        if (usersOwnerUiEl) {
+          usersOwnerUiEl.hidden = !isOwner;
+        }
+        if (isOwner) {
+          populateUserRoles();
+          loadUsers();
+        } else if (usersCountEl) {
+          usersCountEl.textContent = "";
+        }
+      })
+      .catch(function () {});
+  }
+
+  function openUserEditor() {
+    expandOpsSection("users-panel");
+    populateUserRoles();
+    if (userEditor) {
+      userEditor.hidden = false;
+    }
+    var nameEl = document.getElementById("user-name");
+    var passwordEl = document.getElementById("user-password");
+    if (nameEl) {
+      nameEl.value = "";
+    }
+    if (passwordEl) {
+      passwordEl.value = "";
+    }
+    if (userRoleSelect && userRoleSelect.options.length) {
+      userRoleSelect.selectedIndex = 0;
+    }
+    showUserError("");
+  }
+
+  if (userNewBtn) {
+    userNewBtn.addEventListener("click", function () {
+      openUserEditor();
+    });
+  }
+  if (userCancelBtn) {
+    userCancelBtn.addEventListener("click", function () {
+      if (userEditor) {
+        userEditor.hidden = true;
+      }
+      showUserError("");
+    });
+  }
+  if (userSaveBtn) {
+    userSaveBtn.addEventListener("click", function () {
+      var nameEl = document.getElementById("user-name");
+      var passwordEl = document.getElementById("user-password");
+      var name = nameEl ? nameEl.value.trim() : "";
+      var password = passwordEl ? passwordEl.value : "";
+      var role = userRoleSelect ? userRoleSelect.value : "guest";
+      if (!name || !password) {
+        showUserError("Name and password are required.");
+        return;
+      }
+      showUserError("");
+      fetch("/api/users", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name, password: password, role: role }),
+      })
+        .then(function (res) {
+          return res.json().then(function (body) {
+            return { ok: res.ok, body: body };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            showUserError((result.body && result.body.error) || "Create failed.");
+            return;
+          }
+          if (userEditor) {
+            userEditor.hidden = true;
+          }
+          loadUsers();
+        })
+        .catch(function () {
+          showUserError("Create failed.");
+        });
+    });
+  }
+
+  loadSession();
 
   var syncExportBtn = document.getElementById("sync-export");
   var syncImportFile = document.getElementById("sync-import-file");

@@ -11,7 +11,7 @@
       <div class="container-fluid flex-wrap gap-2">
         <span class="navbar-brand mb-0 h1" id="app-title">Desktopper</span>
         <div class="d-flex flex-wrap align-items-center gap-2" id="nav-screens"></div>
-        <form class="d-flex" role="search" onsubmit="return false;">
+        <form class="d-flex d-none" role="search" onsubmit="return false;" id="global-search-form" hidden>
           <input
             class="form-control form-control-sm"
             type="search"
@@ -20,9 +20,10 @@
             autocomplete="off"
           />
         </form>
-        <a class="nav-link" href="/ops" target="_blank" rel="noopener">Ops</a>
-        <a class="nav-link" href="/ops" target="_blank" rel="noopener" id="discuss-in-ops">Discuss in Ops</a>
+        <a class="nav-link" href="/ops" target="_blank" rel="noopener" id="ops-link" hidden>Ops</a>
+        <a class="nav-link" href="/ops" target="_blank" rel="noopener" id="discuss-in-ops" hidden>Discuss in Ops</a>
         <span class="badge bg-danger" id="notices-badge" hidden>0</span>
+        <span class="small text-muted" id="session-user" hidden></span>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="login-toggle">
           Login
         </button>

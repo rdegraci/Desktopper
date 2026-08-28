@@ -67,6 +67,12 @@ class LoggingConfig:
 
 
 @dataclass
+class AuthConfig:
+    owner_name: str
+    owner_password: str
+
+
+@dataclass
 class AppConfig:
     appdir: Path
     bind: str
@@ -76,6 +82,7 @@ class AppConfig:
     llm: LlmConfig
     logging: LoggingConfig
     llm_api_key: str
+    auth: AuthConfig
 
     def public_dict(self) -> dict[str, Any]:
         """Values safe to show in the browser. Never includes the API key."""
@@ -247,6 +254,21 @@ def ensure_appdir(appdir: Path | None = None) -> Path:
     return path
 
 
+def _resolve_owner_credentials(auth_raw: dict, env: dict[str, str]) -> AuthConfig:
+    owner_raw = auth_raw.get("owner") if isinstance(auth_raw.get("owner"), dict) else {}
+    name = (
+        os.environ.get("DESKTOPPER_OWNER_NAME", "").strip()
+        or env.get("DESKTOPPER_OWNER_NAME", "").strip()
+        or str(owner_raw.get("name") or auth_raw.get("owner_name") or "admin").strip()
+    )
+    password = (
+        os.environ.get("DESKTOPPER_OWNER_PASSWORD", "").strip()
+        or env.get("DESKTOPPER_OWNER_PASSWORD", "").strip()
+        or str(owner_raw.get("password") or auth_raw.get("owner_password") or "").strip()
+    )
+    return AuthConfig(owner_name=name or "admin", owner_password=password)
+
+
 def load_config(appdir: Path | None = None) -> AppConfig:
     path = ensure_appdir(appdir)
     conf_path = path / "conf.yaml"
@@ -258,12 +280,16 @@ def load_config(appdir: Path | None = None) -> AppConfig:
     llm_raw = raw.get("llm") or {}
     app_raw = raw.get("app") or {}
     log_raw = raw.get("logging") or {}
+    auth_raw = raw.get("auth") or {}
+    if not isinstance(auth_raw, dict):
+        auth_raw = {}
 
     bind = str(server.get("bind", "127.0.0.1")).strip()
     if bind == "0.0.0.0":
         raise BindRefusedError(bind)
 
     env = _parse_env_file(path / ".env")
+    auth = _resolve_owner_credentials(auth_raw, env)
     spec = resolve_provider(llm_raw.get("provider"))
     api_key = pick_api_key(env, spec)
 
@@ -296,6 +322,7 @@ def load_config(appdir: Path | None = None) -> AppConfig:
             backup_count=int(log_raw.get("backup_count", 3)),
         ),
         llm_api_key=api_key,
+        auth=auth,
     )
     return cfg
 
