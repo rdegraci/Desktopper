@@ -107,6 +107,10 @@
   }
 
   loadUiContextFromPage();
+  var opsPrefill = readOpsPrefill();
+  if (opsPrefill && textEl) {
+    textEl.value = opsPrefill;
+  }
 
   function el(tag, attrs) {
     var node = document.createElement(tag);
@@ -159,8 +163,29 @@
   }
 
   function buildHistoryFromThread(entries) {
+    var capped = [];
+    var userCount = 0;
+    var asstCount = 0;
+    var i;
+    for (i = (entries || []).length - 1; i >= 0; i--) {
+      var entry = entries[i];
+      if (entry.role === "user") {
+        if (userCount >= 10) {
+          continue;
+        }
+        userCount++;
+      } else if (entry.role === "assistant") {
+        if (asstCount >= 10) {
+          continue;
+        }
+        asstCount++;
+      } else {
+        continue;
+      }
+      capped.unshift(entry);
+    }
     var history = [];
-    (entries || []).forEach(function (entry) {
+    capped.forEach(function (entry) {
       if (entry.role === "user") {
         history.push({ role: "user", content: entry.text || "" });
       } else if (entry.role === "assistant") {
@@ -173,6 +198,17 @@
       }
     });
     return history;
+  }
+
+  function readOpsPrefill() {
+    try {
+      var prefill = sessionStorage.getItem("desktopper_ops_prefill");
+      if (prefill) {
+        sessionStorage.removeItem("desktopper_ops_prefill");
+        return prefill;
+      }
+    } catch (e) {}
+    return "";
   }
 
   function renderThreadEntry(entry) {

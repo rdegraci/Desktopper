@@ -188,6 +188,32 @@ class ReplIntentTests(unittest.TestCase):
         payload = json.loads(captured["user"])
         self.assertEqual(payload["ui_context"]["screen_id"], "tasks_list")
 
+    def test_history_included_in_llm_messages(self) -> None:
+        seen: list[list[dict[str, str]]] = []
+
+        def fake(messages):
+            seen.append(messages)
+            return json.dumps({"action": "clarify", "message": "ok"})
+
+        history = []
+        for i in range(12):
+            history.append({"role": "user", "content": f"user-{i}"})
+            history.append({"role": "assistant", "content": f"assist-{i}", "action": "clarify"})
+
+        client = self._client(fake)
+        res = client.post(
+            "/api/intent",
+            json={"text": "latest", "mode": "repl", "history": history},
+        )
+        self.assertEqual(res.status_code, 200)
+        messages = seen[0]
+        history_users = [
+            m for m in messages[1:-1] if m["role"] == "user" and not m["content"].startswith("{")
+        ]
+        self.assertLessEqual(len(history_users), 10)
+        self.assertIn("user-11", history_users[-1]["content"])
+        self.assertNotIn("user-0", [m["content"] for m in history_users])
+
 
 if __name__ == "__main__":
     unittest.main()

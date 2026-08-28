@@ -17,6 +17,49 @@ from app.schema_validate import IntentValidationError, NAME_RE, ValidationError,
 from app.system_prompt import load_system_prompt
 
 REPL_ACTIONS = frozenset({"clarify", "propose", "apply"})
+_HISTORY_USER_CAP = 10
+_HISTORY_ASSISTANT_CAP = 10
+
+
+def cap_history(history: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    if not history:
+        return []
+    user_count = 0
+    asst_count = 0
+    kept: list[dict[str, Any]] = []
+    for entry in reversed(history):
+        if not isinstance(entry, dict):
+            continue
+        role = entry.get("role")
+        if role == "user":
+            if user_count >= _HISTORY_USER_CAP:
+                continue
+            user_count += 1
+        elif role == "assistant":
+            if asst_count >= _HISTORY_ASSISTANT_CAP:
+                continue
+            asst_count += 1
+        else:
+            continue
+        kept.append(entry)
+    kept.reverse()
+    return kept
+
+
+def history_messages(history: list[dict[str, Any]] | None) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
+    for entry in cap_history(history):
+        role = entry.get("role")
+        if role == "user":
+            text = entry.get("content") or entry.get("text") or ""
+            messages.append({"role": "user", "content": str(text)})
+        elif role == "assistant":
+            text = entry.get("content") or entry.get("message") or ""
+            action = entry.get("action")
+            if action:
+                text = f"[{action}] {text}"
+            messages.append({"role": "assistant", "content": str(text)})
+    return messages
 
 
 def collect_stats(cfg: AppConfig, schema: dict[str, Any]) -> dict[str, Any]:
@@ -294,10 +337,11 @@ def run_intent_repl(
         result["message"] = message
         return result
 
-    messages = [
-        {"role": "system", "content": load_system_prompt("repl")},
-        {"role": "user", "content": build_user_payload(cfg, text, schema, ui_context=ui_context, history=history)},
-    ]
+    messages = [{"role": "system", "content": load_system_prompt("repl")}]
+    messages.extend(history_messages(history))
+    messages.append(
+        {"role": "user", "content": build_user_payload(cfg, text, schema, ui_context=ui_context, history=history)}
+    )
     raw = _call_llm(cfg, messages, request_id=request_id, version_before=version_before, complete=complete)
     parsed = _parse_llm_json(cfg, raw, request_id=request_id, version_before=version_before)
 
