@@ -170,7 +170,7 @@ class Slice8OpsJsTests(unittest.TestCase):
         self.assertIn("/api/intent", self.src)
         self.assertIn("/api/ops/thread", self.src)
         self.assertIn("/api/logs", self.src)
-        self.assertIn("Refresh the App tab", self.src)
+        self.assertIn("Return to the App and refresh", self.src)
         self.assertNotIn("innerHTML", self.src)
         self.assertNotIn("BroadcastChannel", self.src)
         self.assertNotIn("WebSocket", self.src)

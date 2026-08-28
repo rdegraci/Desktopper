@@ -54,13 +54,14 @@ class Slice7AppJsTests(unittest.TestCase):
 
     def test_ops_is_html_link(self) -> None:
         self.assertIn('href="/ops"', self.html)
-        self.assertIn('target="_blank"', self.html)
+        self.assertNotIn('target="_blank"', self.html)
         self.assertNotIn("window.open", self.html)
-        self.assertIn("discuss-in-ops", self.html)
+        self.assertIn("ops-link", self.html)
+        self.assertNotIn("discuss-in-ops", self.html)
 
     def test_ui_context_for_ops(self) -> None:
         self.assertIn("buildUiContext", self.src)
-        self.assertIn("prepareDiscussInOps", self.src)
+        self.assertIn("prepareOpsLink", self.src)
         self.assertIn("setFocusedTarget", self.src)
         self.assertIn("desktopper_ui_context", self.src)
 

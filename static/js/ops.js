@@ -269,7 +269,7 @@
       wrap.appendChild(
         el("div", {
           className: "small text-muted mt-1",
-          text: "Schema version " + String(entry.version) + ". Refresh the App tab.",
+          text: "Schema version " + String(entry.version) + ". Return to the App and refresh.",
         })
       );
     }

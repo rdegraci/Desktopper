@@ -240,13 +240,15 @@
     return "Change " + label + " on " + screenTitle + ":";
   }
 
-  function prepareDiscussInOps(link) {
+  function prepareOpsLink(link) {
     var ctx = buildUiContext();
     try {
       sessionStorage.setItem("desktopper_ui_context", JSON.stringify(ctx));
       var prefill = opsPrefillForContext(ctx);
       if (prefill) {
         sessionStorage.setItem("desktopper_ops_prefill", prefill);
+      } else {
+        sessionStorage.removeItem("desktopper_ops_prefill");
       }
     } catch (e) {}
     if (link) {
@@ -1421,7 +1423,6 @@
     var sessionUserEl = document.getElementById("session-user");
     var searchFormEl = document.getElementById("global-search-form");
     var opsLinkEl = document.getElementById("ops-link");
-    var discussOpsEl = document.getElementById("discuss-in-ops");
 
     function setNavElVisible(el, visible) {
       if (!el) {
@@ -1434,7 +1435,6 @@
     function setSignedInNav(signedIn) {
       setNavElVisible(searchFormEl, signedIn);
       setNavElVisible(opsLinkEl, signedIn);
-      setNavElVisible(discussOpsEl, signedIn);
     }
 
     function applySessionState(user) {
@@ -1531,6 +1531,12 @@
     }
 
     loadSession();
+
+    if (opsLinkEl) {
+      opsLinkEl.addEventListener("click", function () {
+        prepareOpsLink(opsLinkEl);
+      });
+    }
   }
 
   function boot() {
@@ -1582,12 +1588,6 @@
         showError(err.message);
       });
     window.addEventListener("hashchange", route);
-    var discussLink = document.getElementById("discuss-in-ops");
-    if (discussLink) {
-      discussLink.addEventListener("click", function () {
-        prepareDiscussInOps(discussLink);
-      });
-    }
   }
 
   boot();

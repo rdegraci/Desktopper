@@ -52,7 +52,7 @@ class Slice1FlaskTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         html = res.get_data(as_text=True)
         self.assertIn('href="/ops"', html)
-        self.assertIn('target="_blank"', html)
+        self.assertNotIn('target="_blank"', html)
         self.assertNotIn("intent-text", html)
         self.assertNotIn("window.open", html)
 
