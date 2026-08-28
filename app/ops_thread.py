@@ -9,6 +9,45 @@ from typing import Any
 
 THREAD_FILE = "ops_thread.jsonl"
 
+OPS_HELP_TITLE = "How this works"
+OPS_HELP_LINES = [
+    "Describe what you want in your app — tables, screens, rules, and permissions.",
+    "The assistant may ask clarifying questions or show a plan before applying.",
+    "Nothing changes until a plan is applied (or you confirm apply).",
+    "For Python hooks and schedules, use the sections below — not this message box.",
+    "After changes apply, return to the App and refresh.",
+]
+OPS_HELP_FOOTER = "Type help anytime to see this message again."
+
+
+def help_payload() -> dict[str, Any]:
+    return {
+        "title": OPS_HELP_TITLE,
+        "lines": list(OPS_HELP_LINES),
+        "footer": OPS_HELP_FOOTER,
+    }
+
+
+def help_message_text() -> str:
+    payload = help_payload()
+    parts = [payload["title"], ""] + [f"• {line}" for line in payload["lines"]]
+    if payload.get("footer"):
+        parts.extend(["", str(payload["footer"])])
+    return "\n".join(parts)
+
+
+def append_help_exchange(appdir: Path) -> list[dict[str, Any]]:
+    append_entry(appdir, {"role": "user", "text": "help"})
+    append_entry(
+        appdir,
+        {
+            "role": "assistant",
+            "action": "help",
+            "message": help_message_text(),
+        },
+    )
+    return read_thread(appdir)
+
 
 def _thread_path(appdir: Path) -> Path:
     return appdir / THREAD_FILE

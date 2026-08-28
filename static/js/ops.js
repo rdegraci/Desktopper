@@ -33,6 +33,9 @@
   var schemaVersion = 0;
   var activeUiContext = null;
   var loadedSchema = null;
+  var opsHelp = null;
+  var lastThreadEntries = [];
+  var pendingUserText = null;
 
   function screenTitleForContext(ctx) {
     if (!ctx) {
@@ -143,6 +146,9 @@
     } else if (action === "clarify") {
       label = "Question";
       cls = "bg-info text-dark";
+    } else if (action === "help") {
+      label = "Help";
+      cls = "bg-secondary";
     }
     return el("span", { className: "badge " + cls + " me-2", text: label });
   }
@@ -169,6 +175,12 @@
     var i;
     for (i = (entries || []).length - 1; i >= 0; i--) {
       var entry = entries[i];
+      if (entry.role === "user" && (entry.text || "").trim().toLowerCase() === "help") {
+        continue;
+      }
+      if (entry.role === "assistant" && entry.action === "help") {
+        continue;
+      }
       if (entry.role === "user") {
         if (userCount >= 10) {
           continue;
@@ -211,6 +223,32 @@
     return "";
   }
 
+  function renderHelpContent(parent, showFooter) {
+    if (!opsHelp) {
+      return;
+    }
+    parent.appendChild(el("strong", { text: opsHelp.title || "How this works" }));
+    var ul = el("ul", { className: "small mb-0 mt-2 ps-3" });
+    (opsHelp.lines || []).forEach(function (line) {
+      ul.appendChild(el("li", { text: line }));
+    });
+    parent.appendChild(ul);
+    if (activeUiContext) {
+      parent.appendChild(
+        el("p", {
+          className: "small text-muted mb-0 mt-2",
+          text:
+            'You opened Ops from the App — say "this column" or "this screen" and the assistant knows what you mean.',
+        })
+      );
+    }
+    if (showFooter && opsHelp.footer) {
+      parent.appendChild(
+        el("p", { className: "small text-muted mb-0 mt-2", text: opsHelp.footer })
+      );
+    }
+  }
+
   function renderThreadEntry(entry) {
     var wrap = el("div", { className: "mb-3" });
     var head = el("div", { className: "d-flex align-items-center mb-1" });
@@ -221,6 +259,10 @@
       head.appendChild(el("strong", { text: "App" }));
     }
     wrap.appendChild(head);
+    if (entry.role === "assistant" && entry.action === "help") {
+      renderHelpContent(wrap, true);
+      return wrap;
+    }
     var bodyText = entry.text || entry.message || "";
     wrap.appendChild(el("div", { text: bodyText }));
     if (entry.role === "assistant" && entry.action === "clarify" && entry.open_questions && entry.open_questions.length) {
@@ -315,25 +357,55 @@
     textEl.focus();
   }
 
+  function renderPendingWorking() {
+    var wrap = el("div", {
+      className: "mb-3",
+      id: "ops-thread-pending",
+    });
+    var head = el("div", { className: "d-flex align-items-center mb-1 gap-2" });
+    head.appendChild(
+      el("span", { className: "badge bg-secondary me-2", text: "Working" })
+    );
+    head.appendChild(el("strong", { text: "App" }));
+    var spinner = el("div", {
+      className: "spinner-border spinner-border-sm text-secondary",
+    });
+    spinner.setAttribute("role", "status");
+    spinner.setAttribute("aria-hidden", "true");
+    head.appendChild(spinner);
+    wrap.appendChild(head);
+    wrap.appendChild(
+      el("div", {
+        className: "text-muted",
+        text: "Thinking… the model is preparing a reply.",
+      })
+    );
+    return wrap;
+  }
+
   function renderThread(entries) {
     if (!threadEl) {
       return;
     }
+    lastThreadEntries = entries || [];
     while (threadEl.firstChild) {
       threadEl.removeChild(threadEl.firstChild);
     }
-    if (!entries || !entries.length) {
-      threadEl.appendChild(
-        el("p", {
-          className: "text-muted small mb-0",
-          text: "No messages yet. Describe your app below.",
-        })
-      );
+    if ((!entries || !entries.length) && !pendingUserText) {
+      var welcome = el("div", { className: "ops-help-welcome text-muted" });
+      renderHelpContent(welcome, true);
+      threadEl.appendChild(welcome);
       return;
     }
-    entries.forEach(function (entry) {
+    (entries || []).forEach(function (entry) {
       threadEl.appendChild(renderThreadEntry(entry));
     });
+    if (pendingUserText) {
+      threadEl.appendChild(
+        renderThreadEntry({ role: "user", text: pendingUserText })
+      );
+      threadEl.appendChild(renderPendingWorking());
+    }
     threadEl.scrollTop = threadEl.scrollHeight;
   }
 
@@ -346,7 +418,9 @@
   }
 
   function applyProposedDiff(diff) {
+    pendingUserText = "(apply plan)";
     setBusy(true);
+    renderThread(lastThreadEntries);
     fetch("/api/intent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -358,6 +432,7 @@
         });
       })
       .then(function (result) {
+        pendingUserText = null;
         loadLogs();
         loadThread();
         if (!result.ok) {
@@ -376,6 +451,7 @@
         closeHookEditor();
       })
       .catch(function () {
+        pendingUserText = null;
         loadLogs();
         loadThread();
       })
@@ -384,8 +460,42 @@
       });
   }
 
-  function sendIntent(text) {
+  function sendHelp() {
+    pendingUserText = "help";
+    if (textEl) {
+      textEl.value = "";
+    }
     setBusy(true);
+    renderThread(lastThreadEntries);
+    return fetch("/api/ops/thread/help", { method: "POST" })
+      .then(function (res) {
+        return res.json().then(function (body) {
+          return { ok: res.ok, body: body };
+        });
+      })
+      .then(function (result) {
+        pendingUserText = null;
+        if (result.ok && result.body && result.body.help) {
+          opsHelp = result.body.help;
+        }
+        return loadThread();
+      })
+      .catch(function () {
+        pendingUserText = null;
+        return loadThread();
+      })
+      .then(function () {
+        setBusy(false);
+      });
+  }
+
+  function sendIntent(text) {
+    pendingUserText = text;
+    if (textEl) {
+      textEl.value = "";
+    }
+    setBusy(true);
+    renderThread(lastThreadEntries);
     return fetch("/api/ops/thread")
       .then(function (res) {
         return res.ok ? res.json() : { entries: [] };
@@ -411,6 +521,7 @@
         });
       })
       .then(function (result) {
+        pendingUserText = null;
         loadLogs();
         loadThread();
         if (!result.ok) {
@@ -441,14 +552,12 @@
           schemaVersion = result.body.version;
           setVersion(result.body.version);
         }
-        if (textEl) {
-          textEl.value = "";
-        }
         loadHooks();
         closeHookEditor();
         return result;
       })
       .catch(function () {
+        pendingUserText = null;
         loadLogs();
         loadThread();
       })
@@ -467,6 +576,9 @@
         return res.json();
       })
       .then(function (data) {
+        if (data.help) {
+          opsHelp = data.help;
+        }
         var entries = data.entries || [];
         renderThread(entries);
         updateThreadBanner(entries);
@@ -806,6 +918,10 @@
       }
       var text = textEl ? textEl.value.trim() : "";
       if (!text) {
+        return;
+      }
+      if (text.toLowerCase() === "help") {
+        sendHelp();
         return;
       }
       sendIntent(text);

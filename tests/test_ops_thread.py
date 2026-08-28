@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from app.config import load_config
-from app.ops_thread import append_entry, clear_thread, read_thread
+from app.ops_thread import append_entry, append_help_exchange, clear_thread, help_payload, read_thread
 from app.server import create_app
 
 
@@ -62,7 +62,19 @@ class OpsThreadApiTests(unittest.TestCase):
     def test_get_thread_empty(self) -> None:
         res = self.client.get("/api/ops/thread")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.get_json()["entries"], [])
+        body = res.get_json()
+        self.assertEqual(body["entries"], [])
+        self.assertIn("help", body)
+        self.assertIn("lines", body["help"])
+
+    def test_post_help_appends_exchange(self) -> None:
+        res = self.client.post("/api/ops/thread/help")
+        self.assertEqual(res.status_code, 200)
+        body = res.get_json()
+        self.assertEqual(len(body["entries"]), 2)
+        self.assertEqual(body["entries"][0]["text"], "help")
+        self.assertEqual(body["entries"][1]["action"], "help")
+        self.assertIn("How this works", body["entries"][1]["message"])
 
     def test_delete_thread(self) -> None:
         append_entry(self.appdir, {"role": "user", "text": "x"})

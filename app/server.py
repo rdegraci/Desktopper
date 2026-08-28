@@ -54,7 +54,7 @@ from app.sync import export_events, import_batch, sync_status
 from app.tick import scheduler_status, start_scheduler
 from app.intent import run_intent, run_intent_repl
 from app.llm import LlmError, public_error_message
-from app.ops_thread import append_entry, clear_thread, read_thread, thread_timestamp
+from app.ops_thread import append_entry, append_help_exchange, clear_thread, help_payload, read_thread, thread_timestamp
 from app.search import global_search, list_rows_search
 from app.log import (
     emit,
@@ -473,7 +473,12 @@ def create_app(*, llm_complete=None) -> Flask:
 
     @flask_app.get("/api/ops/thread")
     def api_ops_thread_get():
-        return jsonify({"entries": read_thread(cfg.appdir)})
+        return jsonify({"entries": read_thread(cfg.appdir), "help": help_payload()})
+
+    @flask_app.post("/api/ops/thread/help")
+    def api_ops_thread_help():
+        entries = append_help_exchange(cfg.appdir)
+        return jsonify({"entries": entries, "help": help_payload()})
 
     @flask_app.delete("/api/ops/thread")
     def api_ops_thread_clear():

@@ -61,17 +61,20 @@
           rows="4"
           required
         ></textarea>
-        <div class="text-muted small mt-2" id="intent-guidance">
-          <p class="mb-1">
-            <strong>Changing fields:</strong> hide to stop showing; update_labels
-            to rename; update_columns for widget changes; add_columns +
-            hide_columns to change type; remove_columns to delete stored data.
-          </p>
-          <p class="mb-0" id="intent-bootstrap-hint" hidden>
-            <strong>Empty schema:</strong> First describe tables and list/form
-            screens. Add dashboard, rules, or reminders in a second intent.
-          </p>
-        </div>
+        <details class="text-muted small mt-2">
+          <summary>Tips for changing fields</summary>
+          <div class="mt-2" id="intent-guidance">
+            <p class="mb-1">
+              <strong>Changing fields:</strong> hide to stop showing; update_labels
+              to rename; update_columns for widget changes; add_columns +
+              hide_columns to change type; remove_columns to delete stored data.
+            </p>
+            <p class="mb-0" id="intent-bootstrap-hint" hidden>
+              <strong>Empty schema:</strong> First describe tables and list/form
+              screens. Add dashboard, rules, or reminders in a second intent.
+            </p>
+          </div>
+        </details>
         <div class="d-flex align-items-center gap-3 mt-3">
           <button type="submit" class="btn btn-primary" id="intent-submit">
             Submit
