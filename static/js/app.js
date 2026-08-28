@@ -3,6 +3,7 @@
   var globalTimer = null;
   var listTimer = null;
   var pendingDelete = null;
+  var focusedTarget = null;
 
   function el(tag, attrs) {
     var node = document.createElement(tag);
@@ -148,6 +149,10 @@
     location.hash = hash;
   }
 
+  function setFocusedTarget(target) {
+    focusedTarget = target;
+  }
+
   function buildUiContext() {
     var loc = parseHash();
     var ctx = {
@@ -203,14 +208,11 @@
         }
       });
     }
+    ctx.focused = focusedTarget;
     return ctx;
   }
 
-  function openDiscussInOps() {
-    var ctx = buildUiContext();
-    try {
-      sessionStorage.setItem("desktopper_ui_context", JSON.stringify(ctx));
-    } catch (e) {}
+  function opsUrlForContext(ctx) {
     var params = new URLSearchParams();
     if (ctx.screen_id) {
       params.set("screen", ctx.screen_id);
@@ -218,12 +220,38 @@
     if (ctx.route) {
       params.set("route", ctx.route);
     }
-    var url = "/ops";
     var qs = params.toString();
-    if (qs) {
-      url += "?" + qs;
+    return qs ? "/ops?" + qs : "/ops";
+  }
+
+  function opsPrefillForContext(ctx) {
+    if (!ctx.focused || ctx.focused.kind !== "column") {
+      return "";
     }
-    window.open(url, "_blank", "noopener");
+    var label = ctx.focused.name;
+    var screenTitle = ctx.table || "this screen";
+    if (ctx.screen_id && schema && schema.screens) {
+      schema.screens.forEach(function (s) {
+        if (s && s.id === ctx.screen_id) {
+          screenTitle = s.title || s.id;
+        }
+      });
+    }
+    return "Change " + label + " on " + screenTitle + ":";
+  }
+
+  function prepareDiscussInOps(link) {
+    var ctx = buildUiContext();
+    try {
+      sessionStorage.setItem("desktopper_ui_context", JSON.stringify(ctx));
+      var prefill = opsPrefillForContext(ctx);
+      if (prefill) {
+        sessionStorage.setItem("desktopper_ops_prefill", prefill);
+      }
+    } catch (e) {}
+    if (link) {
+      link.href = opsUrlForContext(ctx);
+    }
   }
 
   function api(path) {
@@ -441,9 +469,14 @@
       var col = (table.columns || []).filter(function (c) {
         return c.name === cname;
       })[0];
-      hr.appendChild(
-        el("th", { text: (col && col.label) || cname })
-      );
+      var th = el("th", { text: (col && col.label) || cname });
+      th.style.cursor = "pointer";
+      th.title = "Target this column in Ops";
+      th.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        setFocusedTarget({ kind: "column", name: cname, table: tableName });
+      });
+      hr.appendChild(th);
     });
     thead.appendChild(hr);
     tbl.appendChild(thead);
@@ -759,9 +792,17 @@
       }
       var section = el("div", { className: "mt-4" });
       var header = el("div", { className: "d-flex justify-content-between mb-2" });
-      header.appendChild(
-        el("h2", { className: "h5", text: rel.title || rel.table })
-      );
+      var relTitle = el("h2", { className: "h5", text: rel.title || rel.table });
+      relTitle.style.cursor = "pointer";
+      relTitle.title = "Target this related list in Ops";
+      relTitle.addEventListener("click", function () {
+        setFocusedTarget({
+          kind: "related",
+          table: rel.table,
+          fk: rel.fk,
+        });
+      });
+      header.appendChild(relTitle);
       var add = el("button", {
         className: "btn btn-sm btn-outline-primary",
         type: "button",
@@ -1049,6 +1090,16 @@
           text: col.label || col.name,
         });
         label.setAttribute("for", "f-" + col.name);
+        label.style.cursor = "pointer";
+        label.title = "Target this field in Ops";
+        label.addEventListener("click", function (ev) {
+          ev.preventDefault();
+          setFocusedTarget({
+            kind: "column",
+            name: col.name,
+            table: tableName,
+          });
+        });
         box.appendChild(label);
         var opts = fkMap[col.name];
         var val = row ? row[col.name] : null;
@@ -1485,9 +1536,8 @@
     window.addEventListener("hashchange", route);
     var discussLink = document.getElementById("discuss-in-ops");
     if (discussLink) {
-      discussLink.addEventListener("click", function (ev) {
-        ev.preventDefault();
-        openDiscussInOps();
+      discussLink.addEventListener("click", function () {
+        prepareDiscussInOps(discussLink);
       });
     }
   }
