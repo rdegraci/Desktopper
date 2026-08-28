@@ -162,6 +162,32 @@ class ReplIntentTests(unittest.TestCase):
         self.assertNotIn("action", body)
         self.assertEqual(body["version"], 1)
 
+    def test_ui_context_passed_to_llm_payload(self) -> None:
+        captured: dict[str, str] = {}
+
+        def fake(messages):
+            captured["user"] = messages[-1]["content"]
+            return json.dumps({"action": "clarify", "message": "Which screen?"})
+
+        ui_context = {
+            "route": "#list/tasks",
+            "screen_id": "tasks_list",
+            "screen_type": "list",
+            "table": "tasks",
+            "focused": None,
+            "visible_columns": ["title"],
+            "related_block": None,
+            "scope_id": None,
+        }
+        client = self._client(fake)
+        res = client.post(
+            "/api/intent",
+            json={"text": "On this list add overdue", "mode": "repl", "ui_context": ui_context},
+        )
+        self.assertEqual(res.status_code, 200)
+        payload = json.loads(captured["user"])
+        self.assertEqual(payload["ui_context"]["screen_id"], "tasks_list")
+
 
 if __name__ == "__main__":
     unittest.main()

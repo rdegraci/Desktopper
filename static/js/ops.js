@@ -3,6 +3,9 @@
   var versionEl = document.getElementById("schema-version");
   var threadEl = document.getElementById("ops-thread");
   var threadBannerEl = document.getElementById("ops-thread-banner");
+  var uiContextChipEl = document.getElementById("ops-ui-context-chip");
+  var uiContextLabelEl = document.getElementById("ops-ui-context-label");
+  var uiContextClearBtn = document.getElementById("ops-ui-context-clear");
   var clearThreadBtn = document.getElementById("ops-thread-clear");
   var formEl = document.getElementById("intent-form");
   var textEl = document.getElementById("intent-text");
@@ -29,6 +32,81 @@
   var hooksList = [];
   var schemaVersion = 0;
   var activeUiContext = null;
+  var loadedSchema = null;
+
+  function screenTitleForContext(ctx) {
+    if (!ctx) {
+      return "Current screen";
+    }
+    if (ctx.screen_id && loadedSchema && loadedSchema.screens) {
+      var i;
+      for (i = 0; i < loadedSchema.screens.length; i++) {
+        var s = loadedSchema.screens[i];
+        if (s && s.id === ctx.screen_id) {
+          return s.title || s.id;
+        }
+      }
+      return ctx.screen_id;
+    }
+    if (ctx.table) {
+      return ctx.table;
+    }
+    return "Current screen";
+  }
+
+  function showUiContextChip(ctx) {
+    if (!uiContextChipEl || !uiContextLabelEl) {
+      return;
+    }
+    if (!ctx) {
+      uiContextChipEl.hidden = true;
+      return;
+    }
+    uiContextLabelEl.textContent = screenTitleForContext(ctx);
+    uiContextChipEl.hidden = false;
+  }
+
+  function loadUiContextFromPage() {
+    var stored = null;
+    try {
+      stored = JSON.parse(sessionStorage.getItem("desktopper_ui_context") || "null");
+    } catch (e) {
+      stored = null;
+    }
+    if (stored && typeof stored === "object") {
+      activeUiContext = stored;
+      showUiContextChip(stored);
+      return;
+    }
+    var params = new URLSearchParams(window.location.search);
+    var screenId = params.get("screen");
+    var route = params.get("route");
+    if (screenId || route) {
+      activeUiContext = {
+        route: route || "",
+        screen_id: screenId,
+        screen_type: null,
+        table: null,
+        focused: null,
+        visible_columns: [],
+        related_block: null,
+        scope_id: null,
+      };
+      showUiContextChip(activeUiContext);
+    }
+  }
+
+  if (uiContextClearBtn) {
+    uiContextClearBtn.addEventListener("click", function () {
+      activeUiContext = null;
+      showUiContextChip(null);
+      try {
+        sessionStorage.removeItem("desktopper_ui_context");
+      } catch (e) {}
+    });
+  }
+
+  loadUiContextFromPage();
 
   function el(tag, attrs) {
     var node = document.createElement(tag);
@@ -583,6 +661,10 @@
     .then(function (schema) {
       if (!schema) {
         return;
+      }
+      loadedSchema = schema;
+      if (activeUiContext) {
+        showUiContextChip(activeUiContext);
       }
       var name =
         schema.app && schema.app.title ? schema.app.title : "Desktopper";

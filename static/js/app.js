@@ -148,6 +148,84 @@
     location.hash = hash;
   }
 
+  function buildUiContext() {
+    var loc = parseHash();
+    var ctx = {
+      route: location.hash || "",
+      screen_id: null,
+      screen_type: null,
+      table: null,
+      focused: null,
+      visible_columns: [],
+      related_block: null,
+      scope_id: null,
+    };
+    if (loc.kind === "list") {
+      var listScreen = listScreens().filter(function (s) {
+        return s.table === loc.table;
+      })[0];
+      ctx.screen_type = "list";
+      ctx.table = loc.table;
+      ctx.screen_id = listScreen ? listScreen.id : null;
+      ctx.scope_id = loc.query.scope || null;
+      if (listScreen && listScreen.columns && listScreen.columns.length) {
+        ctx.visible_columns = listScreen.columns.slice();
+      } else {
+        var table = tableDef(loc.table);
+        ctx.visible_columns = visibleColumns(table).map(function (c) {
+          return c.name;
+        });
+      }
+    } else if (loc.kind === "form") {
+      var formScreen = formScreenFor(loc.table);
+      ctx.screen_type = "form";
+      ctx.table = loc.table;
+      ctx.screen_id = formScreen ? formScreen.id : null;
+      if (formScreen && formScreen.groups && formScreen.groups.length) {
+        formScreen.groups.forEach(function (group) {
+          (group.columns || []).forEach(function (name) {
+            if (ctx.visible_columns.indexOf(name) < 0) {
+              ctx.visible_columns.push(name);
+            }
+          });
+        });
+      } else {
+        var formTable = tableDef(loc.table);
+        ctx.visible_columns = visibleColumns(formTable).map(function (c) {
+          return c.name;
+        });
+      }
+    } else if (loc.kind === "layout") {
+      ctx.screen_type = "layout";
+      (schema.screens || []).forEach(function (s) {
+        if (s && s.type === "layout" && s.layout_id === loc.id) {
+          ctx.screen_id = s.id;
+        }
+      });
+    }
+    return ctx;
+  }
+
+  function openDiscussInOps() {
+    var ctx = buildUiContext();
+    try {
+      sessionStorage.setItem("desktopper_ui_context", JSON.stringify(ctx));
+    } catch (e) {}
+    var params = new URLSearchParams();
+    if (ctx.screen_id) {
+      params.set("screen", ctx.screen_id);
+    }
+    if (ctx.route) {
+      params.set("route", ctx.route);
+    }
+    var url = "/ops";
+    var qs = params.toString();
+    if (qs) {
+      url += "?" + qs;
+    }
+    window.open(url, "_blank", "noopener");
+  }
+
   function api(path) {
     return fetch(path).then(function (res) {
       return res.json().then(function (body) {
@@ -1405,6 +1483,13 @@
         showError(err.message);
       });
     window.addEventListener("hashchange", route);
+    var discussLink = document.getElementById("discuss-in-ops");
+    if (discussLink) {
+      discussLink.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        openDiscussInOps();
+      });
+    }
   }
 
   boot();
