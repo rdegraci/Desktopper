@@ -143,7 +143,7 @@
     );
   }
 
-  function renderKanban(col, container) {
+  function renderKanban(col, container, schema) {
     var table = col.table;
     var column = col.column;
     var titleCol = col.title_column || "title";
@@ -208,7 +208,7 @@
       });
   }
 
-  function renderLayout(layout, target) {
+  function renderLayout(layout, target, schema) {
     clear(target);
     target.appendChild(el("h2", { className: "h4", text: layout.title || layout.id }));
     (layout.rows || []).forEach(function (row) {
@@ -228,7 +228,7 @@
         } else if (widget === "table" || widget === "form") {
           renderTableLink(col, colEl);
         } else if (widget === "kanban") {
-          renderKanban(col, colEl);
+          renderKanban(col, colEl, schema);
         } else if (widget === "calendar") {
           renderCalendar(col, colEl);
         } else {

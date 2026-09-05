@@ -1293,7 +1293,7 @@
       main.removeChild(main.firstChild);
     }
     if (window.DesktopperLayout) {
-      window.DesktopperLayout.render(layout, main);
+      window.DesktopperLayout.render(layout, main, schema);
     }
     main.hidden = false;
   }
