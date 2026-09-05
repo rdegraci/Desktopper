@@ -615,7 +615,7 @@ Also add a screen:
 - `metric` requires `formula` id
 - `table` requires `table` or `screen`
 - `form` requires `table` or `screen`
-- `kanban` requires `table`, enum `column`, `title_column`
+- `kanban` requires `table`, enum `column`, `title_column`. On Home, users drag cards between status columns to update that column and click a card to open its form.
 - `calendar` requires `table` and date `column`
 - `text` requires `label` plain text. No HTML tags
 - `notices` has no extra fields
