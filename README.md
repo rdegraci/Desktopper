@@ -122,7 +122,7 @@ Hash routes: `#list/contacts` and `#form/contacts/1`.
 
 The runtime system prompt is `FINAL_SYSTEM_PROMPT` in `app/system_prompt.py`. Files under `docs/cache/*-PROMPT.md` are design drafts only. The server does not read them.
 
-Ops still applies most schema via intent. Only **hooks** and **reminders** have direct CRUD panels on Ops.
+Ops still applies most schema via intent. **Packs** loads ordered markdown prompt recipes. Only **hooks** and **reminders** have direct CRUD panels on Ops.
 
 ## Screen language
 
