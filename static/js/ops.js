@@ -36,6 +36,10 @@
   var opsHelp = null;
   var lastThreadEntries = [];
   var pendingUserText = null;
+  var intentBusy = false;
+  var activePack = null;
+  var packAwaitingApply = false;
+  var packStepSubmitted = false;
 
   function screenTitleForContext(ctx) {
     if (!ctx) {
@@ -436,6 +440,10 @@
         loadLogs();
         loadThread();
         if (!result.ok) {
+          if (packAwaitingApply) {
+            packAwaitingApply = false;
+            renderPackSteps();
+          }
           return;
         }
         loadReminders();
@@ -449,11 +457,23 @@
         }
         loadHooks();
         closeHookEditor();
+        if (
+          packAwaitingApply &&
+          result.body &&
+          result.body.action === "apply"
+        ) {
+          packAwaitingApply = false;
+          completeCurrentPackStep();
+        }
       })
       .catch(function () {
         pendingUserText = null;
         loadLogs();
         loadThread();
+        if (packAwaitingApply) {
+          packAwaitingApply = false;
+          renderPackSteps();
+        }
       })
       .then(function () {
         setBusy(false);
@@ -525,6 +545,7 @@
         loadLogs();
         loadThread();
         if (!result.ok) {
+          notePackIntentResult(result);
           return result;
         }
         loadReminders();
@@ -554,12 +575,14 @@
         }
         loadHooks();
         closeHookEditor();
+        notePackIntentResult(result);
         return result;
       })
       .catch(function () {
         pendingUserText = null;
         loadLogs();
         loadThread();
+        notePackIntentResult(null);
       })
       .then(function (result) {
         setBusy(false);
@@ -649,6 +672,7 @@
   }
 
   function setBusy(busy) {
+    intentBusy = !!busy;
     if (busyEl) {
       if (busy) {
         busyEl.classList.remove("d-none");
@@ -667,6 +691,7 @@
     if (textEl) {
       textEl.disabled = !!busy;
     }
+    renderPackSteps();
   }
 
   function expandOpsSection(panelId) {
@@ -687,6 +712,332 @@
       return;
     }
     node.textContent = " (" + String(count) + ")";
+  }
+
+  function parsePromptPack(markdown, filename) {
+    var titleMatch = /^#\s+(.+?)\s*$/m.exec(markdown || "");
+    var title = titleMatch
+      ? titleMatch[1].trim()
+      : String(filename || "Prompt pack")
+          .replace(/\.md$/i, "")
+          .replace(/[-_]+/g, " ");
+    var stepRe = /^##\s+(?:Prompt|Step)\s+(\d+)\s*[—–\-]\s*(.+?)\s*$/gim;
+    var matches = [];
+    var m;
+    while ((m = stepRe.exec(markdown)) !== null) {
+      matches.push({
+        index: m.index,
+        end: m.index + m[0].length,
+        title: m[2].trim(),
+      });
+    }
+    var steps = [];
+    var i;
+    for (i = 0; i < matches.length; i++) {
+      var start = matches[i].end;
+      var end = i + 1 < matches.length ? matches[i + 1].index : markdown.length;
+      var body = markdown.slice(start, end);
+      var skipMatch = /^##\s+(How to run|If Ops goes sideways)\b/im.exec(body);
+      if (skipMatch) {
+        body = body.slice(0, skipMatch.index);
+      }
+      var fence = /```(?:text)?\s*\n([\s\S]*?)```/i.exec(body);
+      if (!fence) {
+        continue;
+      }
+      var intent = fence[1].trim();
+      var prose = body.replace(/```(?:text)?\s*\n[\s\S]*?```/gi, "");
+      var optional =
+        /optional/i.test(matches[i].title) || /optional/i.test(prose);
+      steps.push({
+        index: steps.length,
+        title: matches[i].title,
+        intent: intent,
+        optional: optional,
+      });
+    }
+    return { title: title, steps: steps };
+  }
+
+  function setPackStatus(msg) {
+    var statusEl = document.getElementById("packs-status");
+    if (statusEl) {
+      statusEl.textContent = msg || "";
+    }
+  }
+
+  function activatePack(pack, filename) {
+    if (!pack || !pack.steps || !pack.steps.length) {
+      setPackStatus("No steps found in pack.");
+      return;
+    }
+    activePack = {
+      title: pack.title || filename || "Prompt pack",
+      filename: filename || pack.filename || "",
+      steps: pack.steps,
+      currentIndex: 0,
+      completed: {},
+    };
+    packAwaitingApply = false;
+    packStepSubmitted = false;
+    setPackStatus("");
+    expandOpsSection("packs-panel");
+    renderActivePack();
+  }
+
+  function completeCurrentPackStep() {
+    if (!activePack) {
+      return;
+    }
+    var idx = activePack.currentIndex;
+    activePack.completed[idx] = true;
+    if (idx + 1 < activePack.steps.length) {
+      activePack.currentIndex = idx + 1;
+    }
+    renderActivePack();
+  }
+
+  function notePackIntentResult(result) {
+    if (!activePack) {
+      return;
+    }
+    if (!packStepSubmitted) {
+      if (packAwaitingApply) {
+        packAwaitingApply = false;
+        renderPackSteps();
+      }
+      return;
+    }
+    packStepSubmitted = false;
+    if (!result || !result.ok || !result.body) {
+      packAwaitingApply = false;
+      renderPackSteps();
+      return;
+    }
+    var action = result.body.action;
+    if (action === "apply") {
+      packAwaitingApply = false;
+      completeCurrentPackStep();
+      return;
+    }
+    if (action === "propose") {
+      packAwaitingApply = true;
+      renderPackSteps();
+      return;
+    }
+    packAwaitingApply = false;
+    renderPackSteps();
+  }
+
+  function runPackStep(index) {
+    if (!activePack || intentBusy) {
+      return;
+    }
+    if (index !== activePack.currentIndex) {
+      return;
+    }
+    if (activePack.completed[index]) {
+      return;
+    }
+    var step = activePack.steps[index];
+    if (!step || !step.intent) {
+      return;
+    }
+    packStepSubmitted = true;
+    packAwaitingApply = false;
+    sendIntent(step.intent);
+  }
+
+  function skipPackStep(index) {
+    if (!activePack || intentBusy) {
+      return;
+    }
+    if (index !== activePack.currentIndex) {
+      return;
+    }
+    var step = activePack.steps[index];
+    if (!step || !step.optional) {
+      return;
+    }
+    packAwaitingApply = false;
+    packStepSubmitted = false;
+    completeCurrentPackStep();
+  }
+
+  function renderActivePack() {
+    var activeEl = document.getElementById("packs-active");
+    var titleElPack = document.getElementById("packs-active-title");
+    var progressEl = document.getElementById("packs-progress");
+    if (!activePack) {
+      if (activeEl) {
+        activeEl.hidden = true;
+      }
+      return;
+    }
+    if (activeEl) {
+      activeEl.hidden = false;
+    }
+    if (titleElPack) {
+      titleElPack.textContent = activePack.title;
+    }
+    if (progressEl) {
+      progressEl.textContent =
+        "Step " +
+        String(activePack.currentIndex + 1) +
+        "/" +
+        String(activePack.steps.length);
+    }
+    renderPackSteps();
+  }
+
+  function renderPackSteps() {
+    var stepsEl = document.getElementById("packs-steps");
+    if (!stepsEl) {
+      return;
+    }
+    while (stepsEl.firstChild) {
+      stepsEl.removeChild(stepsEl.firstChild);
+    }
+    if (!activePack) {
+      return;
+    }
+    var i;
+    for (i = 0; i < activePack.steps.length; i++) {
+      (function (stepIndex) {
+        var step = activePack.steps[stepIndex];
+        var done = !!activePack.completed[stepIndex];
+        var current = stepIndex === activePack.currentIndex && !done;
+        var locked = stepIndex > activePack.currentIndex;
+        var row = el("div", {
+          className:
+            "d-flex flex-wrap align-items-center gap-2 mb-2" +
+            (locked ? " text-muted" : ""),
+        });
+        var label = "Step " + String(stepIndex + 1) + "/" + String(activePack.steps.length);
+        label += "  " + step.title;
+        if (step.optional) {
+          label += " (optional)";
+        }
+        if (done) {
+          label += " — done";
+        } else if (locked) {
+          label += " — locked";
+        } else if (packAwaitingApply && current) {
+          label += " — apply the plan above";
+        }
+        row.appendChild(el("span", { className: "small flex-grow-1", text: label }));
+        if (current && !done) {
+          var runBtn = el("button", {
+            className: "btn btn-sm btn-primary",
+            text: "Run step",
+            type: "button",
+          });
+          runBtn.disabled = intentBusy;
+          runBtn.addEventListener("click", function () {
+            runPackStep(stepIndex);
+          });
+          row.appendChild(runBtn);
+          if (step.optional) {
+            var skipBtn = el("button", {
+              className: "btn btn-sm btn-outline-secondary",
+              text: "Skip",
+              type: "button",
+            });
+            skipBtn.disabled = intentBusy;
+            skipBtn.addEventListener("click", function () {
+              skipPackStep(stepIndex);
+            });
+            row.appendChild(skipBtn);
+          }
+        }
+        stepsEl.appendChild(row);
+      })(i);
+    }
+  }
+
+  function renderShippedPacks(packs) {
+    var shippedEl = document.getElementById("packs-shipped");
+    var countEl = document.getElementById("packs-count");
+    if (!shippedEl) {
+      return;
+    }
+    while (shippedEl.firstChild) {
+      shippedEl.removeChild(shippedEl.firstChild);
+    }
+    setSectionCount(countEl, packs && packs.length ? packs.length : 0);
+    if (!packs || !packs.length) {
+      shippedEl.appendChild(
+        el("span", { className: "text-muted small", text: "No shipped packs." })
+      );
+      return;
+    }
+    packs.forEach(function (pack) {
+      var btn = el("button", {
+        className: "btn btn-sm btn-outline-secondary",
+        text: pack.filename || pack.id || pack.title,
+        type: "button",
+      });
+      btn.addEventListener("click", function () {
+        var name = pack.filename || pack.id;
+        fetch("/api/ops/packs/" + encodeURIComponent(name))
+          .then(function (res) {
+            return res.json().then(function (body) {
+              return { ok: res.ok, body: body };
+            });
+          })
+          .then(function (result) {
+            if (!result.ok) {
+              setPackStatus((result.body && result.body.error) || "Pack not found.");
+              return;
+            }
+            activatePack(result.body, result.body.filename || name);
+          })
+          .catch(function () {
+            setPackStatus("Failed to load pack.");
+          });
+      });
+      shippedEl.appendChild(btn);
+    });
+  }
+
+  function loadShippedPacks() {
+    fetch("/api/ops/packs")
+      .then(function (res) {
+        return res.ok ? res.json() : { packs: [] };
+      })
+      .then(function (data) {
+        renderShippedPacks(data.packs || []);
+      })
+      .catch(function () {
+        renderShippedPacks([]);
+      });
+  }
+
+  function bindPacksUi() {
+    var fileInput = document.getElementById("packs-file");
+    if (fileInput) {
+      fileInput.addEventListener("change", function () {
+        var file = fileInput.files && fileInput.files[0];
+        if (!file) {
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+          try {
+            var parsed = parsePromptPack(String(reader.result || ""), file.name);
+            activatePack(parsed, file.name);
+          } catch (e) {
+            setPackStatus("Could not parse pack file.");
+          }
+        };
+        reader.onerror = function () {
+          setPackStatus("Could not read pack file.");
+        };
+        reader.readAsText(file);
+        fileInput.value = "";
+      });
+    }
+    loadShippedPacks();
   }
 
   var remindersCountEl = document.getElementById("reminders-count");
@@ -1218,6 +1569,7 @@
 
   loadReminders();
   loadSchedulerStatus();
+  bindPacksUi();
 
   var usersTbody = document.getElementById("users-tbody");
   var usersHintEl = document.getElementById("users-hint");

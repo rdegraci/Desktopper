@@ -103,6 +103,45 @@
       <button
         type="button"
         class="btn btn-link ops-section-toggle w-100 text-start p-0 mb-0 border-0"
+        id="packs-toggle"
+        data-bs-toggle="collapse"
+        data-bs-target="#packs-panel"
+        aria-expanded="false"
+        aria-controls="packs-panel"
+      >
+        <span class="ops-chevron" aria-hidden="true">›</span>
+        <span class="h5 mb-0 d-inline">Packs</span>
+        <span class="text-muted small ms-2" id="packs-subtitle">Ordered Ops intents</span>
+        <span class="text-muted small" id="packs-count"></span>
+      </button>
+      <div class="collapse" id="packs-panel">
+        <p class="text-muted small mt-2 mb-2">
+          Load a prompt pack, then run each step through the conversation above.
+          Propose still requires Apply. The thread is not cleared when you load a pack.
+        </p>
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <label class="btn btn-sm btn-outline-primary mb-0" for="packs-file">
+            Load file…
+          </label>
+          <input type="file" id="packs-file" accept=".md,text/markdown,text/plain" hidden />
+          <span class="text-muted small" id="packs-status"></span>
+        </div>
+        <div class="mb-2">
+          <div class="text-muted small mb-1">Shipped</div>
+          <div id="packs-shipped" class="d-flex flex-wrap gap-2"></div>
+        </div>
+        <div id="packs-active" hidden>
+          <div class="d-flex justify-content-between align-items-baseline mb-2">
+            <strong id="packs-active-title"></strong>
+            <span class="text-muted small" id="packs-progress"></span>
+          </div>
+          <div id="packs-steps"></div>
+        </div>
+      </div>
+      <hr class="mt-4" />
+      <button
+        type="button"
+        class="btn btn-link ops-section-toggle w-100 text-start p-0 mb-0 border-0"
         id="reminders-toggle"
         data-bs-toggle="collapse"
         data-bs-target="#reminders-panel"
