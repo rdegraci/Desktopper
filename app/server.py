@@ -55,6 +55,7 @@ from app.tick import scheduler_status, start_scheduler
 from app.intent import run_intent, run_intent_repl
 from app.llm import LlmError, public_error_message
 from app.ops_thread import append_entry, append_help_exchange, clear_thread, help_payload, read_thread, thread_timestamp
+from app.prompt_packs import list_example_packs, load_example_pack
 from app.search import global_search, list_rows_search
 from app.log import (
     emit,
@@ -484,6 +485,17 @@ def create_app(*, llm_complete=None) -> Flask:
     def api_ops_thread_clear():
         clear_thread(cfg.appdir)
         return jsonify({"ok": True})
+
+    @flask_app.get("/api/ops/packs")
+    def api_ops_packs_list():
+        return jsonify({"packs": list_example_packs()})
+
+    @flask_app.get("/api/ops/packs/<name>")
+    def api_ops_packs_get(name: str):
+        pack = load_example_pack(name)
+        if pack is None:
+            return jsonify({"error": "Pack not found."}), 404
+        return jsonify(pack)
 
     @flask_app.post("/api/intent")
     def api_intent():

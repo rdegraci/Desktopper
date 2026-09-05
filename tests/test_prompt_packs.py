@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,6 +14,7 @@ from app.prompt_packs import (
     parse_prompt_pack,
     resolve_example_pack_path,
 )
+from app.server import create_app
 
 TRACKER = repo_root() / "examples" / "Pivotal-Kanban-Tracker.md"
 
@@ -107,6 +109,48 @@ class ExamplePackPathTests(unittest.TestCase):
     def test_list_empty_dir(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             self.assertEqual(list_example_packs(Path(tmp)), [])
+
+
+class OpsPacksApiTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.appdir = Path(self.tmp.name)
+        os.environ["DESKTOPPER_APPDIR"] = str(self.appdir)
+        self.client = create_app().test_client()
+
+    def tearDown(self) -> None:
+        os.environ.pop("DESKTOPPER_APPDIR", None)
+        self.tmp.cleanup()
+
+    def test_list_packs(self) -> None:
+        res = self.client.get("/api/ops/packs")
+        self.assertEqual(res.status_code, 200)
+        body = res.get_json()
+        self.assertIn("packs", body)
+        names = [p["filename"] for p in body["packs"]]
+        self.assertIn("Pivotal-Kanban-Tracker.md", names)
+
+    def test_get_tracker_pack(self) -> None:
+        res = self.client.get("/api/ops/packs/Pivotal-Kanban-Tracker.md")
+        self.assertEqual(res.status_code, 200)
+        body = res.get_json()
+        self.assertEqual(body["filename"], "Pivotal-Kanban-Tracker.md")
+        self.assertEqual(len(body["steps"]), 4)
+        self.assertTrue(body["steps"][3]["optional"])
+        self.assertIn("intent", body["steps"][0])
+
+    def test_get_by_stem(self) -> None:
+        res = self.client.get("/api/ops/packs/Pivotal-Kanban-Tracker")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.get_json()["steps"]), 4)
+
+    def test_get_missing(self) -> None:
+        res = self.client.get("/api/ops/packs/No-Such-Pack.md")
+        self.assertEqual(res.status_code, 404)
+
+    def test_get_path_traversal(self) -> None:
+        res = self.client.get("/api/ops/packs/../README.md")
+        self.assertEqual(res.status_code, 404)
 
 
 if __name__ == "__main__":
