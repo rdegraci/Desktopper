@@ -143,6 +143,19 @@
     );
   }
 
+  function kanbanEnumValues(schema, table, column) {
+    var tables = schema && schema.tables;
+    var tableDef = tables && tables[table];
+    var cols = (tableDef && tableDef.columns) || [];
+    var i;
+    for (i = 0; i < cols.length; i++) {
+      if (cols[i] && cols[i].name === column && Array.isArray(cols[i].enum)) {
+        return cols[i].enum.slice();
+      }
+    }
+    return null;
+  }
+
   function renderKanban(col, container, schema) {
     var table = col.table;
     var column = col.column;
@@ -151,31 +164,190 @@
       container.appendChild(el("p", { className: "text-muted", text: "kanban needs table and column" }));
       return;
     }
+
+    var errorEl = el("p", { className: "text-danger small mb-2", text: "" });
+    errorEl.hidden = true;
+    container.appendChild(errorEl);
+
     var wrap = el("div", { className: "d-flex gap-2 flex-wrap" });
     container.appendChild(wrap);
-    fetch("/api/tables/" + encodeURIComponent(table) + "?limit=200")
-      .then(function (res) {
-        return res.json();
-      })
-      .then(function (rows) {
-        var groups = {};
-        (rows || []).forEach(function (row) {
-          var key = row[column] == null ? "—" : String(row[column]);
-          groups[key] = groups[key] || [];
-          groups[key].push(row);
-        });
-        Object.keys(groups).forEach(function (key) {
-          var colEl = el("div", { className: "border rounded p-2", style: "min-width:10rem" }, [
-            el("div", { className: "fw-semibold mb-2", text: key }),
-          ]);
-          groups[key].forEach(function (row) {
-            colEl.appendChild(
-              el("div", { className: "card card-body p-2 mb-2 small", text: row[titleCol] || "#" + row.id })
-            );
-          });
-          wrap.appendChild(colEl);
-        });
+
+    var NULL_KEY = "—";
+    var dragged = false;
+    var dragRowId = null;
+    var dragFromStatus = null;
+
+    function showError(msg) {
+      if (!msg) {
+        errorEl.hidden = true;
+        errorEl.textContent = "";
+        return;
+      }
+      errorEl.hidden = false;
+      errorEl.textContent = msg;
+    }
+
+    function columnKeys(rows, enumValues) {
+      var keys = [];
+      var seen = {};
+      var i;
+      if (enumValues && enumValues.length) {
+        for (i = 0; i < enumValues.length; i++) {
+          keys.push(String(enumValues[i]));
+          seen[String(enumValues[i])] = true;
+        }
+      }
+      var hasNull = false;
+      (rows || []).forEach(function (row) {
+        if (row[column] == null || row[column] === "") {
+          hasNull = true;
+          return;
+        }
+        var key = String(row[column]);
+        if (!seen[key]) {
+          keys.push(key);
+          seen[key] = true;
+        }
       });
+      if (hasNull) {
+        keys.push(NULL_KEY);
+      }
+      if (!keys.length) {
+        (rows || []).forEach(function (row) {
+          var key = row[column] == null || row[column] === "" ? NULL_KEY : String(row[column]);
+          if (!seen[key]) {
+            keys.push(key);
+            seen[key] = true;
+          }
+        });
+      }
+      return keys;
+    }
+
+    function paint(rows) {
+      clear(wrap);
+      var enumValues = kanbanEnumValues(schema, table, column);
+      var groups = {};
+      var keys = columnKeys(rows, enumValues);
+      keys.forEach(function (key) {
+        groups[key] = [];
+      });
+      (rows || []).forEach(function (row) {
+        var key = row[column] == null || row[column] === "" ? NULL_KEY : String(row[column]);
+        if (!groups[key]) {
+          groups[key] = [];
+          keys.push(key);
+        }
+        groups[key].push(row);
+      });
+
+      keys.forEach(function (key) {
+        var droppable = key !== NULL_KEY;
+        var colEl = el("div", {
+          className: "border rounded p-2 kanban-column",
+          style: "min-width:10rem; min-height:4rem",
+          "data-status": key,
+        }, [
+          el("div", { className: "fw-semibold mb-2", text: key }),
+        ]);
+
+        if (droppable) {
+          colEl.addEventListener("dragover", function (ev) {
+            ev.preventDefault();
+            colEl.style.outline = "2px solid #0d6efd";
+          });
+          colEl.addEventListener("dragleave", function () {
+            colEl.style.outline = "";
+          });
+          colEl.addEventListener("drop", function (ev) {
+            ev.preventDefault();
+            colEl.style.outline = "";
+            var rowId = ev.dataTransfer.getData("text/plain") || dragRowId;
+            if (!rowId) {
+              return;
+            }
+            if (dragFromStatus === key) {
+              return;
+            }
+            var body = {};
+            body[column] = key;
+            showError("");
+            fetch("/api/tables/" + encodeURIComponent(table) + "/" + encodeURIComponent(rowId), {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body),
+            })
+              .then(function (res) {
+                return res.json().then(function (data) {
+                  return { ok: res.ok, status: res.status, data: data };
+                });
+              })
+              .then(function (result) {
+                if (!result.ok) {
+                  showError(
+                    result.status === 403
+                      ? "forbidden"
+                      : (result.data && result.data.error) || "Update failed."
+                  );
+                  return;
+                }
+                reload();
+              })
+              .catch(function () {
+                showError("Update failed.");
+              });
+          });
+        }
+
+        (groups[key] || []).forEach(function (row) {
+          var statusKey = row[column] == null || row[column] === "" ? NULL_KEY : String(row[column]);
+          var card = el("div", {
+            className: "card card-body p-2 mb-2 small kanban-card",
+            text: row[titleCol] || "#" + row.id,
+            draggable: "true",
+            "data-row-id": String(row.id),
+            style: "cursor:pointer",
+          });
+          card.addEventListener("dragstart", function (ev) {
+            dragged = true;
+            dragRowId = String(row.id);
+            dragFromStatus = statusKey;
+            ev.dataTransfer.setData("text/plain", String(row.id));
+            ev.dataTransfer.effectAllowed = "move";
+          });
+          card.addEventListener("dragend", function () {
+            setTimeout(function () {
+              dragged = false;
+              dragRowId = null;
+              dragFromStatus = null;
+            }, 0);
+          });
+          card.addEventListener("click", function () {
+            if (dragged) {
+              return;
+            }
+            location.hash = "#form/" + table + "/" + row.id;
+          });
+          colEl.appendChild(card);
+        });
+        wrap.appendChild(colEl);
+      });
+    }
+
+    function reload() {
+      fetch("/api/tables/" + encodeURIComponent(table) + "?limit=200")
+        .then(function (res) {
+          return res.json();
+        })
+        .then(function (rows) {
+          paint(rows);
+        })
+        .catch(function () {
+          showError("Could not reload board.");
+        });
+    }
+
+    reload();
   }
 
   function renderCalendar(col, container) {
