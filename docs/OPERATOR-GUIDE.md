@@ -161,6 +161,7 @@ The conversation persists in `ops_thread.jsonl` across reloads. Use **Clear thre
 
 | Panel | Use when |
 | --- | --- |
+| Packs | Load a shipped or local markdown prompt pack and run ordered Ops intents step by step. Propose still requires Apply; the thread is not cleared on load. |
 | Reminders | Create, edit, enable, or disable wall-clock reminders. View scheduler status. |
 | Hooks | Edit Python hook code; enable, disable, or delete hooks. |
 | Users | Create app login accounts (owner session required). |
