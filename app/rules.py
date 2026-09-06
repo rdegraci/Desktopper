@@ -196,7 +196,8 @@ def apply_rule_diff(cfg: AppConfig, diff: dict[str, Any]) -> list[str]:
     changed: list[str] = []
     add = diff.get("add_rules") or []
     disable = diff.get("disable_rules") or []
-    if not add and not disable:
+    remove = diff.get("remove_rules") or []
+    if not add and not disable and not remove:
         return changed
     schema = read_or_create_schema(cfg.appdir)
     out = copy.deepcopy(schema)
@@ -219,6 +220,22 @@ def apply_rule_diff(cfg: AppConfig, diff: dict[str, Any]) -> list[str]:
         if isinstance(item, dict) and item.get("id") in id_set:
             item["enabled"] = False
             changed.append(item["id"])
+    remove_ids = set(str(x) for x in remove)
+    if remove_ids:
+        existing_ids = {
+            item.get("id")
+            for item in out["rules"]
+            if isinstance(item, dict) and isinstance(item.get("id"), str)
+        }
+        for rid in remove_ids:
+            if rid not in existing_ids:
+                raise ValidationError("bad_rule", f"Rule {rid} does not exist.")
+        out["rules"] = [
+            item
+            for item in out["rules"]
+            if not (isinstance(item, dict) and item.get("id") in remove_ids)
+        ]
+        changed.extend(sorted(remove_ids))
     out["version"] = int(out.get("version") or 0) + 1
     schema_path(cfg.appdir).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     return changed

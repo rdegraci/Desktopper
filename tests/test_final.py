@@ -138,6 +138,57 @@ class FinalTests(unittest.TestCase):
         run_scheduled_rules(self.cfg)
         self.assertEqual(len(list_notices(self.cfg.appdir)), 1)
 
+    def test_remove_rules_drops_rule(self):
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Rule.",
+                "add_tables": [
+                    {
+                        "name": "tasks",
+                        "label": "Tasks",
+                        "columns": [
+                            {"name": "due_on", "type": "TEXT", "label": "Due", "nullable": True, "widget": "text"},
+                            {
+                                "name": "status",
+                                "type": "TEXT",
+                                "label": "Status",
+                                "nullable": False,
+                                "widget": "select",
+                                "enum": ["open", "done"],
+                            },
+                        ],
+                    }
+                ],
+                "add_rules": [
+                    {
+                        "id": "nag_overdue",
+                        "enabled": True,
+                        "trigger": {"kind": "schedule", "every_seconds": 3600},
+                        "table": "tasks",
+                        "when": {
+                            "op": "eq",
+                            "left": {"op": "col", "column": "status"},
+                            "right": {"op": "lit", "value": "open"},
+                        },
+                        "then": [{"kind": "notify", "title": "Open", "body": "Still open."}],
+                    }
+                ],
+            },
+        )
+        schema = read_or_create_schema(self.cfg.appdir)
+        self.assertTrue(any(r.get("id") == "nag_overdue" for r in schema.get("rules") or []))
+        apply_diff(self.cfg, {"summary": "Remove rule.", "remove_rules": ["nag_overdue"]})
+        schema = read_or_create_schema(self.cfg.appdir)
+        self.assertFalse(any(r.get("id") == "nag_overdue" for r in schema.get("rules") or []))
+
+    def test_remove_rules_unknown_id_rejected(self):
+        with self.assertRaises(ValidationError):
+            validate_diff(
+                read_or_create_schema(self.cfg.appdir),
+                {"summary": "Remove missing.", "remove_rules": ["no_such_rule"]},
+            )
+
     def test_reminder_post_and_snooze(self):
         app = create_app()
         client = app.test_client()

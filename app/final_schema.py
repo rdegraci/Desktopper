@@ -20,6 +20,7 @@ FINAL_DIFF_KEYS = frozenset(
         "add_formulas",
         "add_rules",
         "disable_rules",
+        "remove_rules",
         "add_roles",
         "add_grants",
         "add_import_profiles",
@@ -54,6 +55,16 @@ def validate_final_diff(schema: dict[str, Any], diff: dict[str, Any]) -> None:
     for rid in diff.get("disable_rules") or []:
         if not _is_name(rid):
             raise ValidationError("bad_rule", "disable_rules ids must be snake_case.")
+    existing_rule_ids = {
+        item.get("id")
+        for item in (schema.get("rules") or [])
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    for rid in diff.get("remove_rules") or []:
+        if not _is_name(rid):
+            raise ValidationError("bad_rule", "remove_rules ids must be snake_case.")
+        if rid not in existing_rule_ids:
+            raise ValidationError("bad_rule", f"Rule {rid} does not exist.")
     for item in diff.get("add_reminders") or []:
         from app.reminders import validate_reminder_object
 
@@ -166,6 +177,13 @@ def merge_final_schema(schema: dict[str, Any], diff: dict[str, Any]) -> dict[str
         for rule in out["rules"]:
             if isinstance(rule, dict) and rule.get("id") == rid:
                 rule["enabled"] = False
+    remove_ids = {str(x) for x in (diff.get("remove_rules") or [])}
+    if remove_ids:
+        out["rules"] = [
+            rule
+            for rule in out["rules"]
+            if not (isinstance(rule, dict) and rule.get("id") in remove_ids)
+        ]
     for jid in diff.get("disable_jobs") or []:
         for job in out["jobs"]:
             if isinstance(job, dict) and job.get("id") == jid:

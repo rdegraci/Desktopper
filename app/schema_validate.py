@@ -26,6 +26,7 @@ ALLOWED_DIFF_KEYS = {
     "add_formulas",
     "add_rules",
     "disable_rules",
+    "remove_rules",
     "add_roles",
     "add_grants",
     "add_import_profiles",

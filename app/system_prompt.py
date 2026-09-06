@@ -51,6 +51,7 @@ Return only this shape. Use empty arrays when you add nothing. Omit `update_sync
   "add_formulas": [],
   "add_rules": [],
   "disable_rules": [],
+  "remove_rules": [],
   "add_reminders": [],
   "update_reminders": [],
   "disable_reminders": [],
@@ -414,7 +415,9 @@ Do not emit actions other than those four kinds.
 
 If overdue nag needs `due_on` and `status`, add those columns first in the same diff.
 
-`disable_rules` is an array of existing rule ids. Use it when the user asks to stop a data nag. Do not drop rules.
+`disable_rules` is an array of existing rule ids. Use it when the user asks to stop a data nag. Sets `enabled` to false. Does not delete the rule.
+
+`remove_rules` is an array of existing rule ids. Use it when the user asks to delete or remove a rule. Drops those rules from the schema. Past notices that stored the rule id stay.
 
 ## add_reminders
 
