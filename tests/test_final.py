@@ -189,6 +189,71 @@ class FinalTests(unittest.TestCase):
                 {"summary": "Remove missing.", "remove_rules": ["no_such_rule"]},
             )
 
+    def _add_sample_rule(self):
+        apply_diff(
+            self.cfg,
+            {
+                "summary": "Rule.",
+                "add_tables": [
+                    {
+                        "name": "tasks",
+                        "label": "Tasks",
+                        "columns": [
+                            {
+                                "name": "status",
+                                "type": "TEXT",
+                                "label": "Status",
+                                "nullable": False,
+                                "widget": "select",
+                                "enum": ["open", "done"],
+                            },
+                        ],
+                    }
+                ],
+                "add_rules": [
+                    {
+                        "id": "nag_open",
+                        "enabled": True,
+                        "trigger": {"kind": "on_write"},
+                        "table": "tasks",
+                        "when": {
+                            "op": "eq",
+                            "left": {"op": "col", "column": "status"},
+                            "right": {"op": "lit", "value": "open"},
+                        },
+                        "then": [{"kind": "notify", "title": "Open", "body": "Still open."}],
+                    }
+                ],
+            },
+        )
+
+    def test_rules_api_list_patch_delete(self):
+        self._add_sample_rule()
+        app = create_app()
+        client = app.test_client()
+        resp = client.get("/api/rules")
+        self.assertEqual(resp.status_code, 200)
+        rules = resp.get_json()["rules"]
+        self.assertTrue(any(r.get("id") == "nag_open" for r in rules))
+
+        resp = client.patch("/api/rules/nag_open", json={"enabled": False})
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.get_json()["enabled"])
+
+        resp = client.patch("/api/rules/nag_open", json={"enabled": True, "table": "tasks"})
+        self.assertEqual(resp.status_code, 400)
+
+        resp = client.patch("/api/rules/missing_rule", json={"enabled": False})
+        self.assertEqual(resp.status_code, 404)
+
+        resp = client.delete("/api/rules/nag_open")
+        self.assertEqual(resp.status_code, 204)
+        resp = client.get("/api/rules")
+        self.assertFalse(any(r.get("id") == "nag_open" for r in resp.get_json()["rules"]))
+
+        resp = client.delete("/api/rules/nag_open")
+        self.assertEqual(resp.status_code, 404)
+
     def test_reminder_post_and_snooze(self):
         app = create_app()
         client = app.test_client()

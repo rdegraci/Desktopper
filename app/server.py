@@ -50,6 +50,7 @@ from app.reminders import (
     snooze_reminder,
     update_reminder,
 )
+from app.rules import list_rules, remove_rule, set_rule_enabled
 from app.sync import export_events, import_batch, sync_status
 from app.tick import scheduler_status, start_scheduler
 from app.intent import run_intent, run_intent_repl
@@ -301,6 +302,43 @@ def create_app(*, llm_complete=None) -> Flask:
     def api_hooks_delete(hook_id: str):
         try:
             remove_hook(cfg, hook_id)
+            return ("", 204)
+        except ValidationError as exc:
+            return jsonify({"error": exc.msg, "error_code": exc.error_code}), 404
+
+    @flask_app.get("/api/rules")
+    def api_rules_list():
+        return jsonify({"rules": list_rules(cfg)})
+
+    @flask_app.patch("/api/rules/<rid>")
+    def api_rules_patch(rid: str):
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "JSON object required."}), 400
+        if set(body.keys()) - {"enabled"}:
+            return (
+                jsonify(
+                    {
+                        "error": "Only enabled may be patched.",
+                        "error_code": "invalid_json",
+                    }
+                ),
+                400,
+            )
+        if "enabled" not in body or not isinstance(body["enabled"], bool):
+            return (
+                jsonify({"error": "enabled boolean is required.", "error_code": "invalid_json"}),
+                400,
+            )
+        try:
+            return jsonify(set_rule_enabled(cfg, rid, body["enabled"]))
+        except ValidationError as exc:
+            return jsonify({"error": exc.msg, "error_code": exc.error_code}), 404
+
+    @flask_app.delete("/api/rules/<rid>")
+    def api_rules_delete(rid: str):
+        try:
+            remove_rule(cfg, rid)
             return ("", 204)
         except ValidationError as exc:
             return jsonify({"error": exc.msg, "error_code": exc.error_code}), 404

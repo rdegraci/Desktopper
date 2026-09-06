@@ -62,6 +62,52 @@ def _find_rule(schema: dict[str, Any], rid: str) -> dict[str, Any] | None:
     return None
 
 
+def list_rules(cfg: AppConfig) -> list[dict[str, Any]]:
+    schema = read_or_create_schema(cfg.appdir)
+    return [copy.deepcopy(item) for item in (schema.get("rules") or []) if isinstance(item, dict) and item.get("id")]
+
+
+def get_rule(cfg: AppConfig, rid: str) -> dict[str, Any]:
+    schema = read_or_create_schema(cfg.appdir)
+    rule = _find_rule(schema, rid)
+    if not rule:
+        raise ValidationError("not_found", f"Rule {rid!r} not found.")
+    return copy.deepcopy(rule)
+
+
+def set_rule_enabled(cfg: AppConfig, rid: str, enabled: bool) -> dict[str, Any]:
+    schema = read_or_create_schema(cfg.appdir)
+    rule = _find_rule(schema, rid)
+    if not rule:
+        raise ValidationError("not_found", f"Rule {rid!r} not found.")
+    out = copy.deepcopy(schema)
+    out.setdefault("rules", [])
+    for item in out["rules"]:
+        if isinstance(item, dict) and item.get("id") == rid:
+            item["enabled"] = bool(enabled)
+            updated = item
+            break
+    else:
+        raise ValidationError("not_found", f"Rule {rid!r} not found.")
+    out["version"] = int(out.get("version") or 0) + 1
+    schema_path(cfg.appdir).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+    return copy.deepcopy(updated)
+
+
+def remove_rule(cfg: AppConfig, rid: str) -> None:
+    schema = read_or_create_schema(cfg.appdir)
+    if _find_rule(schema, rid) is None:
+        raise ValidationError("not_found", f"Rule {rid!r} not found.")
+    out = copy.deepcopy(schema)
+    out["rules"] = [
+        item
+        for item in (out.get("rules") or [])
+        if not (isinstance(item, dict) and item.get("id") == rid)
+    ]
+    out["version"] = int(out.get("version") or 0) + 1
+    schema_path(cfg.appdir).write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
+
+
 def try_send_email(cfg: AppConfig, to: str | None, subject: str, body: str) -> bool:
     host = os.environ.get("SMTP_HOST", "").strip()
     if not host or not to:
