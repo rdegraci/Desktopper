@@ -350,33 +350,192 @@
     reload();
   }
 
+  function calendarDateKey(value) {
+    if (value == null || value === "") {
+      return null;
+    }
+    var s = String(value).trim();
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      return s.slice(0, 10);
+    }
+    return null;
+  }
+
+  function calendarMonthMatrix(year, monthIndex) {
+    // monthIndex 0-11; weeks start Monday; always six weeks
+    var first = new Date(year, monthIndex, 1);
+    var startOffset = (first.getDay() + 6) % 7;
+    var start = new Date(year, monthIndex, 1 - startOffset);
+    var weeks = [];
+    var d = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    var w;
+    var i;
+    for (w = 0; w < 6; w++) {
+      var week = [];
+      for (i = 0; i < 7; i++) {
+        week.push({
+          year: d.getFullYear(),
+          month: d.getMonth(),
+          day: d.getDate(),
+          key:
+            d.getFullYear() +
+            "-" +
+            String(d.getMonth() + 1).padStart(2, "0") +
+            "-" +
+            String(d.getDate()).padStart(2, "0"),
+          inMonth: d.getMonth() === monthIndex,
+        });
+        d.setDate(d.getDate() + 1);
+      }
+      weeks.push(week);
+    }
+    return weeks;
+  }
+
   function renderCalendar(col, container) {
     var table = col.table;
     var dateCol = col.column;
+    var titleCol = col.title_column || "title";
+    var maxPerDay = 3;
     if (!table || !dateCol) {
-      container.appendChild(el("p", { className: "text-muted", text: "calendar needs table and column" }));
+      container.appendChild(
+        el("p", { className: "text-muted", text: "calendar needs table and column" })
+      );
       return;
     }
-    var list = el("ul", { className: "list-group" });
-    container.appendChild(list);
+
+    var now = new Date();
+    var viewYear = now.getFullYear();
+    var viewMonth = now.getMonth();
+    var rowsCache = [];
+
+    var header = el("div", { className: "d-flex align-items-center justify-content-between mb-2" });
+    var titleEl = el("div", { className: "fw-semibold", text: "" });
+    var nav = el("div", { className: "btn-group btn-group-sm" });
+    var prevBtn = el("button", { type: "button", className: "btn btn-outline-secondary", text: "Prev" });
+    var nextBtn = el("button", { type: "button", className: "btn btn-outline-secondary", text: "Next" });
+    nav.appendChild(prevBtn);
+    nav.appendChild(nextBtn);
+    header.appendChild(titleEl);
+    header.appendChild(nav);
+    container.appendChild(header);
+
+    var gridHost = el("div", { className: "calendar-grid-host" });
+    container.appendChild(gridHost);
+
+    var monthNames = [
+      "January",
+      "February",
+      "March",
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+    ];
+    var weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+    function bucketByDate(rows) {
+      var buckets = {};
+      (rows || []).forEach(function (row) {
+        var key = calendarDateKey(row[dateCol]);
+        if (!key) {
+          return;
+        }
+        if (!buckets[key]) {
+          buckets[key] = [];
+        }
+        buckets[key].push(row);
+      });
+      return buckets;
+    }
+
+    function paint() {
+      clear(gridHost);
+      titleEl.textContent = monthNames[viewMonth] + " " + viewYear;
+      var buckets = bucketByDate(rowsCache);
+      var matrix = calendarMonthMatrix(viewYear, viewMonth);
+
+      var grid = el("div", { className: "calendar-grid" });
+      weekdayLabels.forEach(function (label) {
+        grid.appendChild(el("div", { className: "calendar-weekday", text: label }));
+      });
+
+      matrix.forEach(function (week) {
+        week.forEach(function (cell) {
+          var dayClass = "calendar-day" + (cell.inMonth ? "" : " calendar-day-outside");
+          var dayEl = el("div", { className: dayClass });
+          dayEl.appendChild(
+            el("div", { className: "calendar-day-num", text: String(cell.day) })
+          );
+          var items = buckets[cell.key] || [];
+          var shown = items.slice(0, maxPerDay);
+          shown.forEach(function (row) {
+            var label =
+              row[titleCol] != null && row[titleCol] !== ""
+                ? String(row[titleCol])
+                : "#" + row.id;
+            var itemBtn = el("button", {
+              type: "button",
+              className: "calendar-item btn btn-sm btn-link text-start text-decoration-none p-0",
+              text: label,
+            });
+            itemBtn.addEventListener("click", function (ev) {
+              ev.preventDefault();
+              ev.stopPropagation();
+              location.hash = "#form/" + table + "/" + row.id;
+            });
+            dayEl.appendChild(itemBtn);
+          });
+          if (items.length > maxPerDay) {
+            dayEl.appendChild(
+              el("div", {
+                className: "calendar-more small text-muted",
+                text: "+" + String(items.length - maxPerDay) + " more",
+              })
+            );
+          }
+          grid.appendChild(dayEl);
+        });
+      });
+      gridHost.appendChild(grid);
+    }
+
+    prevBtn.addEventListener("click", function () {
+      viewMonth -= 1;
+      if (viewMonth < 0) {
+        viewMonth = 11;
+        viewYear -= 1;
+      }
+      paint();
+    });
+    nextBtn.addEventListener("click", function () {
+      viewMonth += 1;
+      if (viewMonth > 11) {
+        viewMonth = 0;
+        viewYear += 1;
+      }
+      paint();
+    });
+
     fetch("/api/tables/" + encodeURIComponent(table) + "?limit=200")
       .then(function (res) {
         return res.json();
       })
       .then(function (rows) {
-        (rows || [])
-          .slice()
-          .sort(function (a, b) {
-            return String(a[dateCol] || "").localeCompare(String(b[dateCol] || ""));
-          })
-          .forEach(function (row) {
-            list.appendChild(
-              el("li", { className: "list-group-item d-flex justify-content-between" }, [
-                el("span", { text: row[(col.title_column || "title")] || "#" + row.id }),
-                el("span", { className: "text-muted small", text: row[dateCol] || "" }),
-              ])
-            );
-          });
+        rowsCache = rows || [];
+        paint();
+      })
+      .catch(function () {
+        rowsCache = [];
+        paint();
+        gridHost.appendChild(
+          el("p", { className: "text-muted small", text: "Could not load rows." })
+        );
       });
   }
 
