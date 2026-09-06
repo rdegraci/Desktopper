@@ -447,6 +447,7 @@
           return;
         }
         loadReminders();
+        loadRules();
         if (result.body && result.body.version !== undefined) {
           schemaVersion = result.body.version;
           setVersion(result.body.version);
@@ -549,6 +550,7 @@
           return result;
         }
         loadReminders();
+        loadRules();
         var changed = (result.body && result.body.hooks_changed) || [];
         if (changed.length) {
           showHookPreview(changed, null);
@@ -1041,10 +1043,13 @@
   }
 
   var remindersCountEl = document.getElementById("reminders-count");
+  var rulesCountEl = document.getElementById("rules-count");
   var hooksCountEl = document.getElementById("hooks-count");
   var usersCountEl = document.getElementById("users-count");
   var logsPanelEl = document.getElementById("logs-panel");
   var logsLoaded = false;
+  var rulesList = [];
+  var rulesTbody = document.getElementById("rules-tbody");
 
   if (logsPanelEl) {
     logsPanelEl.addEventListener("shown.bs.collapse", function () {
@@ -1053,6 +1058,238 @@
         loadLogs();
       }
     });
+  }
+
+  function summarizeWhenExpr(expr) {
+    if (!expr || typeof expr !== "object") {
+      return "";
+    }
+    var op = expr.op;
+    if (op === "eq" || op === "neq" || op === "lt" || op === "lte" || op === "gt" || op === "gte") {
+      var left = summarizeWhenExpr(expr.left);
+      var right = summarizeWhenExpr(expr.right);
+      var sym = { eq: "=", neq: "≠", lt: "<", lte: "≤", gt: ">", gte: "≥" }[op] || op;
+      if (left && right) {
+        return left + " " + sym + " " + right;
+      }
+    }
+    if (op === "and" || op === "or") {
+      var parts = (expr.args || []).map(summarizeWhenExpr).filter(Boolean);
+      if (parts.length) {
+        return parts.join(" " + op + " ");
+      }
+    }
+    if (op === "not") {
+      var inner = summarizeWhenExpr(expr.arg || (expr.args && expr.args[0]));
+      return inner ? "not (" + inner + ")" : "";
+    }
+    if (op === "col") {
+      return String(expr.column || "");
+    }
+    if (op === "lit") {
+      return JSON.stringify(expr.value);
+    }
+    if (op === "now") {
+      return "now";
+    }
+    try {
+      var raw = JSON.stringify(expr);
+      return raw.length > 48 ? raw.slice(0, 45) + "…" : raw;
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function summarizeTrigger(trigger) {
+    if (!trigger || typeof trigger !== "object") {
+      return "";
+    }
+    if (trigger.kind === "on_write") {
+      return "on_write";
+    }
+    if (trigger.kind === "schedule") {
+      var every = trigger.every_seconds;
+      if (typeof every === "number" && every > 0) {
+        if (every % 3600 === 0) {
+          return "schedule " + every / 3600 + "h";
+        }
+        if (every % 60 === 0) {
+          return "schedule " + every / 60 + "m";
+        }
+        return "schedule " + every + "s";
+      }
+      return "schedule";
+    }
+    return String(trigger.kind || "");
+  }
+
+  function summarizeThen(thenList) {
+    if (!Array.isArray(thenList) || !thenList.length) {
+      return "";
+    }
+    return thenList
+      .map(function (action) {
+        if (!action || typeof action !== "object") {
+          return "";
+        }
+        var kind = action.kind || "";
+        if (kind === "notify" && action.title) {
+          return "notify (" + action.title + ")";
+        }
+        if (kind === "set_column" && action.column) {
+          return "set_column " + action.column;
+        }
+        return kind;
+      })
+      .filter(Boolean)
+      .join(", ");
+  }
+
+  function loadRules() {
+    return fetch("/api/rules")
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("rules");
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        rulesList = data.rules || [];
+        renderRulesTable();
+        setSectionCount(rulesCountEl, rulesList.length);
+      })
+      .catch(function () {
+        rulesList = [];
+        renderRulesTable();
+        setSectionCount(rulesCountEl, 0);
+      });
+  }
+
+  function renderRulesTable() {
+    if (!rulesTbody) {
+      return;
+    }
+    rulesTbody.textContent = "";
+    if (!rulesList.length) {
+      var emptyRow = document.createElement("tr");
+      var emptyCell = document.createElement("td");
+      emptyCell.colSpan = 6;
+      emptyCell.className = "text-muted";
+      emptyCell.textContent = "No rules yet. Describe one in the conversation above.";
+      emptyRow.appendChild(emptyCell);
+      rulesTbody.appendChild(emptyRow);
+      return;
+    }
+    rulesList.forEach(function (rule) {
+      var tr = document.createElement("tr");
+      function td(text) {
+        var cell = document.createElement("td");
+        cell.textContent = text;
+        return cell;
+      }
+      tr.appendChild(td(rule.id || ""));
+      tr.appendChild(td(rule.table || ""));
+      tr.appendChild(td(summarizeTrigger(rule.trigger)));
+      tr.appendChild(td(summarizeWhenExpr(rule.when) || "—"));
+      tr.appendChild(td(summarizeThen(rule.then) || "—"));
+      var actionCell = document.createElement("td");
+      actionCell.className = "text-nowrap";
+      var toggleBtn = document.createElement("button");
+      toggleBtn.type = "button";
+      toggleBtn.className = "btn btn-sm btn-outline-secondary me-1";
+      toggleBtn.textContent = rule.enabled === false ? "Enable" : "Disable";
+      toggleBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var nextEnabled = rule.enabled === false;
+        fetch("/api/rules/" + encodeURIComponent(rule.id), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: nextEnabled }),
+        })
+          .then(function (res) {
+            if (!res.ok) {
+              throw new Error("patch");
+            }
+            return loadRules();
+          })
+          .catch(function () {});
+      });
+      actionCell.appendChild(toggleBtn);
+      var deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.className = "btn btn-sm btn-outline-danger me-1";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        confirmDeleteRule(rule.id);
+      });
+      actionCell.appendChild(deleteBtn);
+      var expandBtn = document.createElement("button");
+      expandBtn.type = "button";
+      expandBtn.className = "btn btn-sm btn-link";
+      expandBtn.textContent = "JSON";
+      expandBtn.addEventListener("click", function (ev) {
+        ev.stopPropagation();
+        var next = tr.nextSibling;
+        if (next && next.getAttribute && next.getAttribute("data-rule-expand") === rule.id) {
+          rulesTbody.removeChild(next);
+          return;
+        }
+        var expandRow = document.createElement("tr");
+        expandRow.setAttribute("data-rule-expand", rule.id);
+        var expandCell = document.createElement("td");
+        expandCell.colSpan = 6;
+        var pre = document.createElement("pre");
+        pre.className = "small mb-0";
+        pre.textContent = JSON.stringify(
+          { when: rule.when, then: rule.then },
+          null,
+          2
+        );
+        expandCell.appendChild(pre);
+        expandRow.appendChild(expandCell);
+        if (next) {
+          rulesTbody.insertBefore(expandRow, next);
+        } else {
+          rulesTbody.appendChild(expandRow);
+        }
+      });
+      actionCell.appendChild(expandBtn);
+      tr.appendChild(actionCell);
+      rulesTbody.appendChild(tr);
+    });
+  }
+
+  function confirmDeleteRule(ruleId) {
+    var modalEl = document.getElementById("confirm-modal");
+    var bodyEl = document.getElementById("confirm-modal-body");
+    if (bodyEl) {
+      bodyEl.textContent =
+        "Remove rule " +
+        ruleId +
+        " from the schema? Past notices stay.";
+    }
+    if (!(window.bootstrap && modalEl && confirmModalOk)) {
+      return;
+    }
+    var modal = window.bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+    confirmModalOk.onclick = function () {
+      fetch("/api/rules/" + encodeURIComponent(ruleId), { method: "DELETE" })
+        .then(function (res) {
+          if (!res.ok) {
+            throw new Error("delete");
+          }
+        })
+        .then(function () {
+          modal.hide();
+          loadRules();
+          loadLogs();
+        })
+        .catch(function () {
+          modal.hide();
+        });
+    };
   }
 
   function loadHooks() {
@@ -1229,6 +1466,7 @@
     });
 
   loadHooks();
+  loadRules();
 
   if (clearThreadBtn) {
     clearThreadBtn.addEventListener("click", function () {

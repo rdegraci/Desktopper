@@ -216,6 +216,41 @@
       <button
         type="button"
         class="btn btn-link ops-section-toggle w-100 text-start p-0 mb-0 border-0"
+        id="rules-toggle"
+        data-bs-toggle="collapse"
+        data-bs-target="#rules-panel"
+        aria-expanded="false"
+        aria-controls="rules-panel"
+      >
+        <span class="ops-chevron" aria-hidden="true">›</span>
+        <span class="h5 mb-0 d-inline">Business rules</span>
+        <span class="text-muted small ms-2" id="rules-subtitle">Data nags and automations</span>
+        <span class="text-muted small" id="rules-count"></span>
+      </button>
+      <div class="collapse" id="rules-panel">
+        <p class="text-muted small mt-2 mb-2">
+          Create or change rules in the conversation above. Enable, disable, or delete here.
+        </p>
+        <div class="table-responsive">
+          <table class="table table-sm" id="rules-table">
+            <thead>
+              <tr>
+                <th>Id</th>
+                <th>Table</th>
+                <th>Trigger</th>
+                <th>When</th>
+                <th>Then</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rules-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <hr class="mt-4" />
+      <button
+        type="button"
+        class="btn btn-link ops-section-toggle w-100 text-start p-0 mb-0 border-0"
         id="hooks-toggle"
         data-bs-toggle="collapse"
         data-bs-target="#hooks-panel"
