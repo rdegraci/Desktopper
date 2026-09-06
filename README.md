@@ -57,17 +57,30 @@ Day-to-day runbooks live in [docs/OPERATOR-GUIDE.md](docs/OPERATOR-GUIDE.md).
 ### Install
 
 1. Clone this repository.
-2. Create a virtual environment: `python3 -m venv .venv`
-3. Activate it: `source .venv/bin/activate`
-4. Install packages: `pip install -r requirements.txt`
-5. Fetch Bootstrap once: `python3 tools/fetch_bootstrap.py`
+2. From the repo root, install into the Python you use on the command line (no project `.venv`):
 
-If `static/css/bootstrap.min.css` is missing, `python3 -m app.server` prints a message and exits.
+   ```bash
+   python3 -m pip install -e .
+   ```
+
+   Check that `which python3` and `which pip` (or `python3 -m pip`) are the same environment. If you use conda `(base)` but `which python3` shows Homebrew (`/opt/homebrew/...`), either put conda first on `PATH` or install with conda’s pip:
+
+   ```bash
+   "$HOME/miniconda3/bin/pip" install -e .
+   ```
+
+   Homebrew’s Python (PEP 668) often refuses `pip install` into itself. Prefer conda, or another env you manage — not a project `.venv` unless you want one.
+
+3. Fetch Bootstrap once: `python3 tools/fetch_bootstrap.py`
+
+`python3 -m pip install -r requirements.txt` is equivalent (it installs `-e .`).
 
 ### Run
 
-1. Start the server: `python3 -m app.server`
+1. Start the server: `desktopper`
 2. Open the printed URL in Safari, for example `http://127.0.0.1:8000/`.
+
+If `desktopper` is not on your `PATH`, run `python3 -m app.server` from the repo (same `python3` you installed into), or put that environment’s `bin` directory on `PATH` (for conda: `$HOME/miniconda3/bin`).
 
 The process binds to `server.bind` in `conf.yaml`. It refuses `0.0.0.0`.
 
@@ -194,16 +207,16 @@ Keep `.env` and `conf.yaml`. You may also delete `desktopper.jsonl` if you want 
 
 ## Development
 
-Prefer the project virtualenv:
+With the package installed in the Python you use for tests:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v
 ```
 
 Focused runs:
 
 ```bash
-.venv/bin/python -m unittest tests.test_hooks tests.test_screens tests.test_slice7 tests.test_slice8 tests.test_final -v
+python3 -m unittest tests.test_hooks tests.test_screens tests.test_slice7 tests.test_slice8 tests.test_final -v
 ```
 
 ## Project layout
@@ -215,7 +228,8 @@ tools/                Bootstrap fetch and optional seed
 tests/                unittest suite
 .env.example          Secrets template (copied to appdir)
 config.yaml.example   Knobs template (copied to appdir as conf.yaml)
-requirements.txt
+pyproject.toml        Package metadata and `desktopper` CLI entry point
+requirements.txt      Thin wrapper: `pip install -e .`
 LICENSE
 ```
 

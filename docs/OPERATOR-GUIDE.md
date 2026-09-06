@@ -17,9 +17,9 @@ The LLM never writes HTML, JavaScript, or SQL. The host validates schema diffs a
 
 ## Day-one checklist
 
-1. From the repo, activate the virtualenv: `source .venv/bin/activate`. If `.venv` is missing, follow the [README](../README.md) install steps first.
+1. From the repo, install once into the Python you use day to day: `python3 -m pip install -e .` (see the [README](../README.md) if needed).
 2. Confirm Bootstrap assets exist (`static/css/bootstrap.min.css`). If missing, run `python3 tools/fetch_bootstrap.py`.
-3. Start the server: `python3 -m app.server`.
+3. Start the server: `desktopper` (or `python3 -m app.server` from the repo).
 4. Open the printed URL in Safari (for example `http://127.0.0.1:8000/`).
 5. Put an LLM key in `appdir/.env` if you use a cloud provider. Restart after edits.
 6. Sign in on Home as the owner when you need user management or grant-aware views.
@@ -57,20 +57,28 @@ Do not put API keys in `conf.yaml`. Do not commit live `.env` or `conf.yaml`. Th
 
 ### Start
 
-From the repo, activate the project virtualenv, then start the server:
+Install once into the Python you run (no project `.venv`), then start:
 
 ```bash
-source .venv/bin/activate
+cd /path/to/desktopper
+python3 -m pip install -e .
+desktopper
+```
+
+Confirm `which python3` matches the env you installed into. With conda `(base)`, Homebrew’s `/opt/homebrew/bin/python3` often shadows conda. Fix by putting `$HOME/miniconda3/bin` earlier on `PATH`, or install and run with conda’s binaries:
+
+```bash
+"$HOME/miniconda3/bin/pip" install -e .
+"$HOME/miniconda3/bin/desktopper"
+```
+
+If `desktopper` is not found but the package is installed, run:
+
+```bash
 python3 -m app.server
 ```
 
-Without activating, call the venv interpreter directly:
-
-```bash
-.venv/bin/python -m app.server
-```
-
-Do not use a bare system or conda `(base)` `python3` unless that environment has the packages from `requirements.txt`. A missing `flask` (or `yaml`) usually means the wrong interpreter.
+A missing `flask` or `yaml` means you installed into a different interpreter than the one you are running.
 
 On success the process prints the Home URL and keeps running. Startup also:
 
@@ -247,8 +255,10 @@ Keep `.env` and `conf.yaml`. Optionally delete `desktopper.jsonl` and `ops_threa
 
 | Symptom | Likely cause | What to do |
 | --- | --- | --- |
-| `ModuleNotFoundError: No module named 'flask'` (or `yaml`) | Wrong Python (system or conda base) | From the repo: `source .venv/bin/activate`, or run `.venv/bin/python -m app.server`. Install with `pip install -r requirements.txt` inside the venv if needed. |
-| Process exits: Bootstrap CSS missing | Assets not fetched | With the venv active, run `python3 tools/fetch_bootstrap.py`. |
+| `desktopper: command not found` | Not installed, or that env’s `bin` not on `PATH` | From the repo: `python3 -m pip install -e .`. Or run `python3 -m app.server`. With conda, try `$HOME/miniconda3/bin/desktopper`. |
+| `ModuleNotFoundError: No module named 'flask'` (or `yaml`) | `python3` is not the env you installed into (often Homebrew vs conda) | Run `which python3`. Install with that interpreter’s pip, or use `$HOME/miniconda3/bin/pip install -e .` and that `desktopper`. |
+| `externally-managed-environment` from pip | Homebrew Python (PEP 668) | Do not force `--break-system-packages`. Install into conda (or another managed env), not Homebrew’s Python. |
+| Process exits: Bootstrap CSS missing | Assets not fetched | From the repo: `python3 tools/fetch_bootstrap.py`. |
 | Process exits: bind refused | `server.bind` is `0.0.0.0` | Set a loopback address in `conf.yaml`. |
 | Process exits: unknown LLM provider | Bad `llm.provider` | Use `xai` or `openai_compatible`. |
 | Ops returns LLM down / timeout | Network, key, model, or timeout | Check `.env` key, provider URL, and `timeout_seconds`. Restart after edits. |
@@ -270,23 +280,26 @@ Keep `.env` and `conf.yaml`. Optionally delete `desktopper.jsonl` and `ops_threa
 ## Quick command reference
 
 ```bash
-# Activate venv (from repo) — required so python3 has Flask and deps
-source .venv/bin/activate
+# From the repo — install once (no project .venv)
+# Use the same Python you will run with (check: which python3)
+python3 -m pip install -e .
 
-# Or skip activate and call the venv interpreter:
-# .venv/bin/python -m app.server
+# If conda (base) but python3 is Homebrew, use conda explicitly:
+# "$HOME/miniconda3/bin/pip" install -e .
 
 # One-time Bootstrap fetch
 python3 tools/fetch_bootstrap.py
 
 # Run
-python3 -m app.server
+desktopper
+# or: python3 -m app.server
+# or: "$HOME/miniconda3/bin/desktopper"
 
 # Optional sample schema (server must be running)
 python3 tools/seed_schema.py
 
 # Override data directory for a throwaway instance
-DESKTOPPER_APPDIR=/tmp/desktopper-op python3 -m app.server
+DESKTOPPER_APPDIR=/tmp/desktopper-op desktopper
 ```
 
 ## Related files

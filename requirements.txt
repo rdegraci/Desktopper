@@ -1,2 +1,6 @@
-Flask==3.1.2
-PyYAML==6.0.2
+# Editable install from the repo root into your current Python:
+#   python3 -m pip install -e .
+#
+# That installs runtime deps from pyproject.toml and the `desktopper` CLI.
+# No project .venv is required. A virtualenv is optional if you want isolation.
+-e .
