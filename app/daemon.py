@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import plistlib
+import re
 import signal
 import socket
 import subprocess
@@ -41,6 +42,41 @@ def _launchctl(*args: str) -> subprocess.CompletedProcess:
 
 def agent_loaded() -> bool:
     return _launchctl("print", _service()).returncode == 0
+
+
+def agent_pid() -> int | None:
+    proc = _launchctl("print", _service())
+    if proc.returncode != 0:
+        return None
+    match = re.search(r"^\s*pid = (\d+)\s*$", proc.stdout, re.MULTILINE)
+    return int(match.group(1)) if match else None
+
+
+def manager_of(appdir: Path, pid: int) -> str | None:
+    """Return "launchagent" or "pidfile" if this daemon module manages `pid`."""
+    if agent_pid() == pid:
+        return "launchagent"
+    if _read_pid(appdir) == pid:
+        return "pidfile"
+    return None
+
+
+def spawn_restart(appdir: Path, port: int | None = None) -> None:
+    # A new session keeps the helper alive when restart stops the server that
+    # spawned it; launchd also kills the agent's process group on exit.
+    cmd = [sys.executable, "-m", "app.server"]
+    if port is not None:
+        cmd += ["--port", str(port)]
+    cmd += ["daemon", "restart"]
+    with open(appdir / LOGFILE_NAME, "ab") as log:
+        subprocess.Popen(
+            cmd,
+            cwd=REPO_ROOT,
+            stdin=subprocess.DEVNULL,
+            stdout=log,
+            stderr=log,
+            start_new_session=True,
+        )
 
 
 def server_command(port: int | None = None) -> list[str]:

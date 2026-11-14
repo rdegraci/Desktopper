@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
@@ -487,6 +488,38 @@ def create_app(*, llm_complete=None, port: int | None = None) -> Flask:
             return jsonify(create_user(cfg, body.get("name", ""), body.get("password", ""), body.get("role", "guest"))), 201
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+
+    @flask_app.get("/api/daemon")
+    def api_daemon_status():
+        user = getattr(g, "user", None)
+        if not user or user.get("role") != OWNER_ROLE:
+            return jsonify({"error": "forbidden"}), 403
+        return jsonify({
+            "label": daemon.LABEL,
+            "pid": os.getpid(),
+            "installed": daemon.plist_path().exists(),
+            "managed_by": daemon.manager_of(cfg.appdir, os.getpid()),
+        })
+
+    @flask_app.post("/api/daemon/restart")
+    def api_daemon_restart():
+        user = getattr(g, "user", None)
+        if not user or user.get("role") != OWNER_ROLE:
+            return jsonify({"error": "forbidden"}), 403
+        managed_by = daemon.manager_of(cfg.appdir, os.getpid())
+        if managed_by is None:
+            return jsonify({
+                "error": "This server is not running as the Desktopper daemon. "
+                "Restart it from the terminal where it runs.",
+                "error_code": "not_daemon",
+            }), 409
+        resp = jsonify({"ok": True, "managed_by": managed_by})
+        # Spawn after the response is sent, so the restart cannot cut it off.
+        resp.call_on_close(lambda: daemon.spawn_restart(cfg.appdir, port))
+        emit(cfg, event="daemon.restart", component="server",
+             msg=f"restart requested ({managed_by})",
+             request_id=getattr(g, "request_id", None))
+        return resp
 
     @flask_app.post("/api/import/<profile_id>")
     def api_import_csv(profile_id: str):

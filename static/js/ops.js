@@ -1905,6 +1905,15 @@
         if (usersOwnerUiEl) {
           usersOwnerUiEl.hidden = !isOwner;
         }
+        if (settingsHintEl) {
+          settingsHintEl.hidden = isOwner;
+        }
+        if (settingsOwnerUiEl) {
+          settingsOwnerUiEl.hidden = !isOwner;
+        }
+        if (isOwner) {
+          loadDaemonStatus();
+        }
         if (isOwner) {
           populateUserRoles();
           loadUsers();
@@ -1913,6 +1922,110 @@
         }
       })
       .catch(function () {});
+  }
+
+  var settingsHintEl = document.getElementById("settings-hint");
+  var settingsOwnerUiEl = document.getElementById("settings-owner-ui");
+  var daemonStatusEl = document.getElementById("daemon-status");
+  var daemonRestartBtn = document.getElementById("daemon-restart");
+  var daemonRestartStatusEl = document.getElementById("daemon-restart-status");
+  var daemonPid = null;
+
+  function describeDaemon(data) {
+    if (data.managed_by === "launchagent") {
+      return "Running as LaunchAgent " + data.label + ".";
+    }
+    if (data.managed_by === "pidfile") {
+      return "Running in the background (started with `desktopper daemon start`).";
+    }
+    var msg = "This server is not running as the daemon, so it cannot restart itself.";
+    if (data.installed) {
+      msg += " LaunchAgent " + data.label + " is installed but does not own this server.";
+    } else {
+      msg += " Run `desktopper daemon install` to run it as a LaunchAgent.";
+    }
+    return msg;
+  }
+
+  function showDaemon(data) {
+    daemonPid = data.pid;
+    setText(daemonStatusEl, describeDaemon(data));
+    if (daemonRestartBtn) {
+      daemonRestartBtn.disabled = !data.managed_by;
+    }
+  }
+
+  function loadDaemonStatus() {
+    if (!daemonStatusEl) {
+      return;
+    }
+    fetch("/api/daemon", { credentials: "same-origin" })
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("daemon");
+        }
+        return res.json();
+      })
+      .then(showDaemon)
+      .catch(function () {
+        setText(daemonStatusEl, "Could not read the daemon status.");
+      });
+  }
+
+  function waitForRestart(attempt) {
+    // The old process can still answer for a moment; wait for a new pid.
+    fetch("/api/daemon", { credentials: "same-origin", cache: "no-store" })
+      .then(function (res) {
+        if (!res.ok) {
+          throw new Error("down");
+        }
+        return res.json();
+      })
+      .then(function (data) {
+        if (data.pid === daemonPid) {
+          throw new Error("old");
+        }
+        setText(daemonRestartStatusEl, "Desktopper restarted.");
+        showDaemon(data);
+      })
+      .catch(function () {
+        if (attempt >= 40) {
+          setText(daemonRestartStatusEl, "Desktopper did not come back. See daemon.log in the app directory.");
+          daemonRestartBtn.disabled = false;
+          return;
+        }
+        setTimeout(function () {
+          waitForRestart(attempt + 1);
+        }, 750);
+      });
+  }
+
+  if (daemonRestartBtn) {
+    daemonRestartBtn.addEventListener("click", function () {
+      if (!window.confirm("Restart the Desktopper daemon? This page reconnects when it is back.")) {
+        return;
+      }
+      daemonRestartBtn.disabled = true;
+      setText(daemonRestartStatusEl, "Restarting…");
+      fetch("/api/daemon/restart", { method: "POST", credentials: "same-origin" })
+        .then(function (res) {
+          return res.json().then(function (body) {
+            return { ok: res.ok, body: body };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok) {
+            setText(daemonRestartStatusEl, result.body.error || "Restart failed.");
+            daemonRestartBtn.disabled = false;
+            return;
+          }
+          waitForRestart(0);
+        })
+        .catch(function () {
+          setText(daemonRestartStatusEl, "Restart failed.");
+          daemonRestartBtn.disabled = false;
+        });
+    });
   }
 
   function openUserEditor() {

@@ -108,6 +108,8 @@ To use a port other than `server.port`, put `--port N` before `daemon`, for exam
 
 The daemon does not change the bind address. The server reads `server.bind` from `conf.yaml`, and the bind rules below apply.
 
+To restart the daemon from the browser, sign in as the owner, open Ops, expand **Settings**, and click **Restart daemon**. This does the same thing as `desktopper daemon restart`. The page shows when the new server answers. The button is disabled when the server does not run as the daemon, for example when you started it in a terminal.
+
 ### Bind rules
 
 The process binds to `server.bind` in `conf.yaml`. Default is `127.0.0.1`. Bind `0.0.0.0` is refused. After you change bind, port, LLM settings, or secrets, restart the process.
@@ -204,6 +206,7 @@ The conversation persists in `ops_thread.jsonl` across reloads. Use **Clear thre
 | Hooks | Edit Python hook code; enable, disable, or delete hooks. |
 | Users | Create app login accounts (owner session required). |
 | Sync export / import | Move change events between replicas. |
+| Settings | Restart the background daemon (owner session required). |
 | Logs | Read and copy recent server events. |
 
 Most schema still goes through the conversation. Formulas have no separate Ops editor. Rules are authored via intent; the Business rules panel manages enable, disable, and delete.

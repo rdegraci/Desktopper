@@ -374,6 +374,33 @@
       <button
         type="button"
         class="btn btn-link ops-section-toggle w-100 text-start p-0 mb-0 border-0"
+        id="settings-toggle"
+        data-bs-toggle="collapse"
+        data-bs-target="#settings-panel"
+        aria-expanded="false"
+        aria-controls="settings-panel"
+      >
+        <span class="ops-chevron" aria-hidden="true">›</span>
+        <span class="h5 mb-0 d-inline">Settings</span>
+        <span class="text-muted small ms-2" id="settings-subtitle">Background service</span>
+      </button>
+      <div class="collapse" id="settings-panel">
+        <p class="text-muted small mt-2 mb-2" id="settings-hint">
+          Sign in on the App tab as the owner to manage the background service.
+        </p>
+        <div id="settings-owner-ui" hidden>
+          <h3 class="h6 mt-2">Desktopper daemon</h3>
+          <p class="small mb-2" id="daemon-status"></p>
+          <button type="button" class="btn btn-sm btn-outline-warning" id="daemon-restart" disabled>
+            Restart daemon
+          </button>
+          <p class="small mt-2 mb-0" id="daemon-restart-status" role="status"></p>
+        </div>
+      </div>
+      <hr class="mt-2" />
+      <button
+        type="button"
+        class="btn btn-link ops-section-toggle w-100 text-start p-0 mb-0 border-0"
         id="logs-toggle"
         data-bs-toggle="collapse"
         data-bs-target="#logs-panel"
