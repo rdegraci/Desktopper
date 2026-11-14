@@ -1482,8 +1482,16 @@
       setNavElVisible(opsLinkEl, signedIn);
     }
 
+    var signedIn = false;
+
     function applySessionState(user) {
-      var signedIn = !!(user && user.name);
+      signedIn = !!(user && user.name);
+      if (toggle) {
+        toggle.textContent = signedIn ? "Logout" : "Login";
+      }
+      if (panel && signedIn) {
+        panel.hidden = true;
+      }
       if (sessionUserEl) {
         if (!signedIn) {
           sessionUserEl.hidden = true;
@@ -1527,6 +1535,10 @@
 
     if (toggle && panel) {
       toggle.addEventListener("click", function () {
+        if (signedIn) {
+          signOut();
+          return;
+        }
         panel.hidden = !panel.hidden;
       });
     }
@@ -1567,12 +1579,14 @@
       });
     }
 
-    if (logoutBtn) {
-      logoutBtn.addEventListener("click", function () {
-        fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
-          applySessionState(null);
-        });
+    function signOut() {
+      fetch("/api/logout", { method: "POST", credentials: "same-origin" }).then(function () {
+        applySessionState(null);
       });
+    }
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener("click", signOut);
     }
 
     loadSession();
