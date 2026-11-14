@@ -282,35 +282,33 @@
     }
     nav.textContent = "";
     navListScreens().forEach(function (screen) {
-      var a = el("a", {
-        className: "nav-link",
-        href: "#list/" + screen.table,
-        text: screen.title || screen.table,
-      });
-      nav.appendChild(a);
+      nav.appendChild(viewNavButton("#list/" + screen.table, screen.title || screen.table));
     });
     (schema.screens || []).forEach(function (screen) {
       if (screen && screen.type === "layout" && screen.layout_id) {
         nav.appendChild(
-          el("a", {
-            className: "nav-link",
-            href: "#layout/" + screen.layout_id,
-            text: screen.title || screen.layout_id,
-          })
+          viewNavButton("#layout/" + screen.layout_id, screen.title || screen.layout_id)
         );
       }
     });
     var lookups = lookupNavScreens();
     if (lookups.length) {
       var drop = el("div", { className: "dropdown" });
-      var toggle = el("a", {
-        className: "nav-link dropdown-toggle",
-        href: "#",
+      var toggle = el("button", {
+        type: "button",
+        className: "btn btn-sm btn-outline-primary dropdown-toggle nav-view-btn",
         text: "Lookups",
-        role: "button",
       });
       toggle.setAttribute("data-bs-toggle", "dropdown");
       toggle.setAttribute("aria-expanded", "false");
+      toggle.setAttribute(
+        "data-nav-hashes",
+        lookups
+          .map(function (screen) {
+            return "#list/" + screen.table;
+          })
+          .join(" ")
+      );
       drop.appendChild(toggle);
       var menu = el("ul", { className: "dropdown-menu" });
       lookups.forEach(function (screen) {
@@ -326,6 +324,52 @@
       drop.appendChild(menu);
       nav.appendChild(drop);
     }
+    markActiveNav();
+  }
+
+  // Anchors styled as buttons keep native hash navigation (and
+  // open-in-new-tab) while reading as view switches, not inline links.
+  function viewNavButton(hash, label) {
+    var a = el("a", {
+      className: "btn btn-sm btn-outline-primary nav-view-btn",
+      href: hash,
+      role: "button",
+      text: label,
+    });
+    a.setAttribute("data-nav-hashes", hash);
+    return a;
+  }
+
+  function currentViewHash() {
+    var loc = parseHash();
+    if (loc.kind === "list" || loc.kind === "form") {
+      return "#list/" + loc.table;
+    }
+    if (loc.kind === "layout") {
+      return "#layout/" + loc.id;
+    }
+    return "";
+  }
+
+  function markActiveNav() {
+    var nav = document.getElementById("nav-screens");
+    if (!nav) {
+      return;
+    }
+    var current = currentViewHash();
+    var buttons = nav.querySelectorAll(".nav-view-btn");
+    Array.prototype.forEach.call(buttons, function (btn) {
+      var hashes = (btn.getAttribute("data-nav-hashes") || "").split(" ");
+      var on = !!current && hashes.indexOf(current) >= 0;
+      btn.classList.toggle("btn-primary", on);
+      btn.classList.toggle("btn-outline-primary", !on);
+      btn.classList.toggle("active", on);
+      if (on) {
+        btn.setAttribute("aria-current", "page");
+      } else {
+        btn.removeAttribute("aria-current");
+      }
+    });
   }
 
   function drawEmpty(show) {
@@ -1300,6 +1344,7 @@
 
   function route() {
     showError("");
+    markActiveNav();
     var empty = listScreens().length === 0;
     if (empty) {
       drawEmpty(true);
