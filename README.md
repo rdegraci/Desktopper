@@ -77,8 +77,10 @@ Day-to-day runbooks live in [docs/OPERATOR-GUIDE.md](docs/OPERATOR-GUIDE.md).
 
 ### Run
 
-1. Start the server: `desktopper`
+1. Start the server: `desktopper`. To use a port other than `server.port` in `conf.yaml`, add `--port N`.
 2. Open the printed URL in Safari, for example `http://127.0.0.1:8000/`.
+
+To run Desktopper in the background, use `desktopper daemon start`. To start it at login with launchd, use `desktopper daemon install`. See [Background service](docs/OPERATOR-GUIDE.md#background-service).
 
 If `desktopper` is not on your `PATH`, run `python3 -m app.server` from the repo (same `python3` you installed into), or put that environment’s `bin` directory on `PATH` (for conda: `$HOME/miniconda3/bin`).
 

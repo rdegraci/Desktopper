@@ -90,11 +90,29 @@ On success the process prints the Home URL and keeps running. Startup also:
 
 ### Stop
 
-Stop the process in the terminal (Ctrl+C). There is no separate daemon service in this MVP.
+If you started the server in a terminal, stop it with Ctrl+C. If you started it with `desktopper daemon`, use `desktopper daemon stop`.
+
+### Background service
+
+`desktopper daemon` runs the server without a terminal. Output goes to `daemon.log` in the appdir.
+
+| Command | Result |
+|---|---|
+| `desktopper daemon start` | Starts the server in the background. If the server already listens on the port, it does nothing. |
+| `desktopper daemon stop` | Stops the server that `daemon start` or the LaunchAgent started. A server that you started in a terminal is not stopped. |
+| `desktopper daemon restart` | Stops the server, then starts it. |
+| `desktopper daemon install` | Writes the LaunchAgent `~/Library/LaunchAgents/com.desktopper.server.plist`, loads it, and starts the server. The server then starts at each login. Run it again after you change Python environments or move the repo. |
+| `desktopper daemon uninstall` | Unloads the LaunchAgent, which stops its server, and removes the plist. If the agent is not installed, it does nothing. |
+
+To use a port other than `server.port`, put `--port N` before `daemon`, for example `desktopper --port 8123 daemon install`. The LaunchAgent records that port.
+
+The daemon does not change the bind address. The server reads `server.bind` from `conf.yaml`, and the bind rules below apply.
 
 ### Bind rules
 
 The process binds to `server.bind` in `conf.yaml`. Default is `127.0.0.1`. Bind `0.0.0.0` is refused. After you change bind, port, LLM settings, or secrets, restart the process.
+
+To use a different port for one run, start with `desktopper --port N` (or `python3 -m app.server --port N`). This value overrides `server.port` in `conf.yaml`. N must be an integer from 1 to 65535. If N is not valid, the server does not start. Without `--port`, the server uses `server.port` (default 8000).
 
 ## Configuration knobs
 
@@ -268,7 +286,7 @@ Keep `.env` and `conf.yaml`. Optionally delete `desktopper.jsonl` and `ops_threa
 | Reminders do not fire | Server stopped or reminder disabled | Keep the process running. Check Reminders panel and scheduler status. |
 | Users panel blocked | Not signed in as owner | Log in on Home as owner, then open Ops. |
 | Empty schema but old thread | Thread survived a reset | Clear thread on Ops, or delete `ops_thread.jsonl`. |
-| Port already in use | Another process on the port | Change `server.port` or stop the other process. |
+| Port already in use | Another process on the port | Change `server.port`, start with `--port N`, or stop the other process. |
 
 ## Security notes for operators
 

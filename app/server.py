@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 import uuid
@@ -30,6 +31,7 @@ from app.auth import (
     login,
     logout,
 )
+from app import daemon
 from app.formulas import evaluate_formula
 from app.host_db import ensure_host_tables
 from app.hooks import (
@@ -76,8 +78,10 @@ def _load_schema(appdir: Path) -> dict:
     return read_or_create_schema(appdir)
 
 
-def create_app(*, llm_complete=None) -> Flask:
+def create_app(*, llm_complete=None, port: int | None = None) -> Flask:
     cfg = load_config()
+    if port is not None:
+        cfg.port = port
     setup_logging(cfg)
     log_config_load(cfg)
 
@@ -690,7 +694,43 @@ def _safe_static(subdir: str, name: str):
     return send_from_directory(root, name)
 
 
-def main() -> None:
+def _port_arg(value: str) -> int:
+    try:
+        port = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid port {value!r}: must be an integer") from None
+    if not 1 <= port <= 65535:
+        raise argparse.ArgumentTypeError(f"invalid port {port}: must be 1-65535")
+    return port
+
+
+def _parse_args(argv: list[str] | None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="desktopper",
+        description=(
+            "Start the Desktopper local web server. It reads conf.yaml and .env "
+            "from the app directory (~/Library/Application Support/Desktopper, "
+            "or $DESKTOPPER_APPDIR), then serves the UI at the configured "
+            "bind address and port."
+        ),
+    )
+    parser.add_argument(
+        "--port",
+        type=_port_arg,
+        default=None,
+        metavar="N",
+        help="TCP port to listen on (1-65535). Overrides server.port in conf.yaml.",
+    )
+    sub = parser.add_subparsers(dest="command", metavar="COMMAND")
+    daemon.add_parser(sub)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> None:
+    # Parse first so --help exits before config load creates the app directory.
+    args = _parse_args(argv)
+    if args.command == "daemon":
+        sys.exit(daemon.run(args))
     if not BOOTSTRAP_CSS.is_file():
         print(
             "Bootstrap CSS is missing. Run: python3 tools/fetch_bootstrap.py",
@@ -702,12 +742,14 @@ def main() -> None:
     except (BindRefusedError, UnknownLlmProviderError) as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(1)
+    if args.port is not None:
+        cfg.port = args.port
     setup_logging(cfg)
     ensure_host_tables(cfg.appdir)
     ensure_owner(cfg)
     run_startup_hooks(cfg)
     start_scheduler(cfg)
-    app = create_app()
+    app = create_app(port=args.port)
     log_server_start(cfg)
     print(f"http://{cfg.bind}:{cfg.port}/", flush=True)
     app.run(host=cfg.bind, port=cfg.port, debug=False, use_reloader=False)
