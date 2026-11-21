@@ -140,12 +140,13 @@ class KanbanUxTests(unittest.TestCase):
         self.assertIn('text: "New"', kanban)
         self.assertIn("app.openNewModal(table, reload, defaults)", kanban)
         self.assertIn("defaults[column] = enumValues[0]", kanban)
-        # Existing-card click and drag-and-drop are unchanged.
-        self.assertIn('location.hash = "#form/" + table + "/" + row.id;', kanban)
+        # Card click opens the edit modal; drag-and-drop still PUTs status.
+        self.assertIn("app.openEditModal(table, row.id, reload)", kanban)
         self.assertIn('method: "PUT"', kanban)
         app_js = self.client.get("/js/app.js").get_data(as_text=True)
-        self.assertIn("window.DesktopperApp = { openNewModal: openNewModal }", app_js)
+        self.assertIn("openEditModal: openEditModal", app_js)
         self.assertIn("function openNewModal(tableName, onCreated, defaults)", app_js)
+        self.assertIn("function openEditModal(tableName, rowId, onSaved)", app_js)
 
     def test_kanban_create_with_default_status_lands_on_board(self) -> None:
         created = self.client.post(

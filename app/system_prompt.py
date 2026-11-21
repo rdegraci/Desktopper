@@ -618,7 +618,7 @@ Also add a screen:
 - `metric` requires `formula` id
 - `table` requires `table` or `screen`
 - `form` requires `table` or `screen`
-- `kanban` requires `table`, enum `column`, `title_column`. On Home, users drag cards between status columns to update that column and click a card to open its form.
+- `kanban` requires `table`, enum `column`, `title_column`. On Home, users drag cards between status columns to update that column and click a card to open its edit modal.
 - `calendar` requires `table` and date `column`. Optional `title_column` (default `title`). On Home, the widget is a **month grid** (prev/next); items appear on that date; click an item to open its form.
 - `text` requires `label` plain text. No HTML tags
 - `notices` has no extra fields

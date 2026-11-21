@@ -1400,8 +1400,11 @@
   }
 
   // layout.js loads first and calls this at click time, so Home widgets can
-  // reuse the same create modal as list screens.
-  window.DesktopperApp = { openNewModal: openNewModal };
+  // reuse the same create/edit modal as list screens.
+  window.DesktopperApp = {
+    openNewModal: openNewModal,
+    openEditModal: openEditModal,
+  };
 
   function drawForm(tableName, rowId, query) {
     var main = document.getElementById("main");

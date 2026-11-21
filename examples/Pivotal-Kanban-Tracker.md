@@ -79,7 +79,7 @@ so Home opens on the board.
 Do not add reminders or rules yet.
 ```
 
-After this, Home should show empty status columns; drag moves `state`, click opens the story form.
+After this, Home should show empty status columns; drag moves `state`, click opens the story edit modal.
 
 ---
 

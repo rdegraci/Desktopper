@@ -14,7 +14,7 @@ Machine readers can fetch the same row as JSON from
 1. Start Desktopper, open **Ops** (or load this file from **Packs**).
 2. Paste Prompt 1 → apply → refresh Home → create a project and a few issues.
 3. Prompt 2 → apply → check issue list filters.
-4. Prompt 3 → apply → refresh Home → use the board (drag status, click to open form).
+4. Prompt 3 → apply → refresh Home → use the board (drag status, click to edit in a modal).
 5. Prompt 4 if you want form grouping.
 
 ---
@@ -84,7 +84,7 @@ Do not add reminders or rules yet.
 ```
 
 After this, Home should show status columns (including empty ones); drag moves
-`status`, click opens the issue form (`#form/issues/<id>`).
+`status`, click opens the issue edit modal.
 
 ---
 

@@ -194,7 +194,7 @@ Peer sync logs row changes to `_sync_events`. On Ops, **Sync export** writes eve
 
 ## Layouts
 
-`add_layouts` defines the home dashboard. Widgets include **metric**, **notices**, **reminders**, **text**, **table** links, **kanban**, and **calendar**. Home renders the layout named by `app.home` when it points at a layout id instead of a list screen. The **kanban** widget shows every enum value as a column (including empty ones); drag a card to update that status field, or click a card to open its form. **New** opens a create modal with Cancel and Ok. The status field starts at the first enum value. The **calendar** widget is a month grid (prev/next) for a table date column; click an item to open its form.
+`add_layouts` defines the home dashboard. Widgets include **metric**, **notices**, **reminders**, **text**, **table** links, **kanban**, and **calendar**. Home renders the layout named by `app.home` when it points at a layout id instead of a list screen. The **kanban** widget shows every enum value as a column (including empty ones); drag a card to update that status field, or click a card to open its edit modal. **New** opens a create modal with Cancel and Ok. The status field starts at the first enum value. The **calendar** widget is a month grid (prev/next) for a table date column; click an item to open its form.
 
 ## Reset local data
 

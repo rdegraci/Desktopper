@@ -349,7 +349,12 @@
             if (dragged) {
               return;
             }
-            location.hash = "#form/" + table + "/" + row.id;
+            var app = global.DesktopperApp;
+            if (!app || !app.openEditModal) {
+              location.hash = "#form/" + table + "/" + row.id;
+              return;
+            }
+            app.openEditModal(table, row.id, reload);
           });
           colEl.appendChild(card);
         });
