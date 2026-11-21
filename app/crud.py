@@ -206,6 +206,54 @@ def get_row(
     return _public_row(cfg, table_name, row, user=user)
 
 
+def _form_related_for_table(schema: dict[str, Any], table_name: str) -> list[dict[str, Any]]:
+    for screen in schema.get("screens") or []:
+        if not isinstance(screen, dict):
+            continue
+        if screen.get("type") != "form" or screen.get("table") != table_name:
+            continue
+        related = screen.get("related") or []
+        if not isinstance(related, list):
+            return []
+        return [item for item in related if isinstance(item, dict)]
+    return []
+
+
+def get_row_info(
+    cfg: AppConfig,
+    table_name: str,
+    row_id: int,
+    *,
+    user: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Row plus form-related children for machine readers (LLMs, scripts)."""
+    schema = read_or_create_schema(cfg.appdir)
+    row = get_row(cfg, table_name, row_id, user=user)
+    # Late import: search imports _public_row from this module.
+    from app.search import list_rows_search
+
+    related_out: dict[str, list[dict[str, Any]]] = {}
+    for rel in _form_related_for_table(schema, table_name):
+        child = rel.get("table")
+        fk = rel.get("fk")
+        if not isinstance(child, str) or not isinstance(fk, str):
+            continue
+        if child not in _tables(schema):
+            continue
+        child_cols = {c["name"] for c in _columns(_tables(schema)[child])}
+        if fk not in child_cols:
+            continue
+        related_out[child] = list_rows_search(
+            cfg,
+            child,
+            filters={fk: str(row_id)},
+            limit=200,
+            offset=0,
+            user=user,
+        )
+    return {"table": table_name, "row": row, "related": related_out}
+
+
 def insert_row(
     cfg: AppConfig,
     table_name: str,

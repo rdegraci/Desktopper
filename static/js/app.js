@@ -1346,6 +1346,32 @@
     return String(value);
   }
 
+  function rowInfoUrl(tableName, rowId) {
+    return (
+      location.origin +
+      "/api/tables/" +
+      encodeURIComponent(tableName) +
+      "/" +
+      rowId +
+      "/info"
+    );
+  }
+
+  function appendDetailsInfoUrl(body, tableName, rowId) {
+    // Absolute JSON URL for LLMs/scripts: row plus form-related children.
+    var infoUrl = rowInfoUrl(tableName, rowId);
+    body.appendChild(el("dt", { className: "col-sm-4", text: "Info URL" }));
+    var dd = el("dd", { className: "col-sm-8 text-break" });
+    var link = el("a", {
+      href: infoUrl,
+      text: infoUrl,
+      rel: "noopener",
+    });
+    link.style.wordBreak = "break-all";
+    dd.appendChild(link);
+    body.appendChild(dd);
+  }
+
   // Read-only view of one row. Ok only dismisses; nothing is saved.
   function openDetailsModal(tableName, rowId) {
     var modalEl = document.getElementById("details-modal");
@@ -1363,6 +1389,7 @@
     body.textContent = "";
     errEl.textContent = "";
     errEl.hidden = true;
+    appendDetailsInfoUrl(body, tableName, rowId);
     var seq = ++detailsModalSeq;
     var rowPath = "/api/tables/" + encodeURIComponent(tableName) + "/" + rowId;
 

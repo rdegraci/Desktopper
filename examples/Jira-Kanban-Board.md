@@ -6,8 +6,10 @@ There are **4** prompts: 3 required, plus 1 optional polish.
 
 After the board is live, each issue form is addressable as
 `#form/issues/<id>` (for example `http://127.0.0.1:8000/#form/issues/1`).
-Machine readers can fetch the same row as JSON from
-`GET /api/tables/issues/<id>`.
+Machine readers can fetch the row plus related children (comments when
+configured on the form) as JSON from
+`GET /api/tables/issues/<id>/info`. The Issues details modal shows that
+Info URL so you can paste it into another LLM.
 
 ## How to run it
 

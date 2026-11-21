@@ -16,6 +16,7 @@ from app.crud import (
     CrudError,
     delete_row,
     get_row,
+    get_row_info,
     insert_row,
     list_options,
     update_row,
@@ -227,6 +228,17 @@ def create_app(*, llm_complete=None, port: int | None = None) -> Flask:
     def api_get(name: str, row_id: int):
         try:
             return jsonify(get_row(cfg, name, row_id, user=getattr(g, "user", None)))
+        except CrudError as err:
+            return _crud_error(err)
+
+    @flask_app.get("/api/tables/<name>/<int:row_id>/info")
+    def api_get_info(name: str, row_id: int):
+        # Machine-readable pack: the row plus related children from the form
+        # screen (for example issue comments). Shown as Info URL in details.
+        try:
+            return jsonify(
+                get_row_info(cfg, name, row_id, user=getattr(g, "user", None))
+            )
         except CrudError as err:
             return _crud_error(err)
 

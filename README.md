@@ -126,7 +126,7 @@ Put the key in `.env` only.
 
 | Surface | URL | Role |
 | --- | --- | --- |
-| Home | `/` | Generated app: lists, forms, related child lists, and search. No chat box. |
+| Home | `/` | Generated app: lists, forms, related child lists, and search. No chat box. Row details show an Info URL (`/api/tables/<table>/<id>/info`) with the row plus related children as JSON. |
 | Ops | `/ops` | Describe changes. The LLM returns a JSON schema diff. The host validates and applies it. |
 
 After a successful Ops change, return to Home and refresh. Home does not live-update.
