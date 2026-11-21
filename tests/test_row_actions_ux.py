@@ -85,6 +85,9 @@ class RowActionsUxTests(unittest.TestCase):
         self.assertIn("rowId ? api(rowPath)", modal)
         self.assertIn("appendFormFields(form, tableName, screen, cols, results[1]", modal)
         self.assertIn('rowId ? "PUT" : "POST"', modal)
+        # Edit modal shows form-related children (comments) with Add.
+        self.assertIn("drawRelated(relatedHost, rowId, related)", modal)
+        self.assertIn('id="new-modal-related"', self.client.get("/").get_data(as_text=True))
         # Errors stay in the modal; only success hides it.
         self.assertIn(".catch(function (err) {\n          modalError(err.message);", modal)
 

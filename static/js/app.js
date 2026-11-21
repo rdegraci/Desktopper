@@ -1247,6 +1247,7 @@
   function openRecordModal(tableName, rowId, onSaved, defaults) {
     var modalEl = document.getElementById("new-modal");
     var form = document.getElementById("new-modal-form");
+    var relatedHost = document.getElementById("new-modal-related");
     var titleEl = document.getElementById("new-modal-title");
     var errEl = document.getElementById("new-modal-error");
     var okBtn = document.getElementById("new-modal-ok");
@@ -1256,11 +1257,15 @@
       return;
     }
     var screen = formScreenFor(tableName);
+    var related = (screen && screen.related) || [];
     var cols = visibleColumns(table);
     var title = (screen && screen.title) || table.label || tableName;
     titleEl.textContent = (rowId ? "Edit " : "New ") + title;
     form.textContent = "";
     form.setAttribute("data-table", tableName);
+    if (relatedHost) {
+      relatedHost.textContent = "";
+    }
     errEl.textContent = "";
     errEl.hidden = true;
     okBtn.disabled = true;
@@ -1288,6 +1293,11 @@
           fkMap[p.name] = p.options;
         });
         appendFormFields(form, tableName, screen, cols, results[1], fkMap, NEW_MODAL_PREFIX);
+        // Edit only: same related child lists as the full-page form (Add works
+        // here). Create has no parent id yet, so related stays empty.
+        if (rowId && relatedHost && related.length) {
+          drawRelated(relatedHost, rowId, related);
+        }
         okBtn.disabled = false;
       })
       .catch(function (err) {

@@ -108,6 +108,8 @@
           <div class="modal-body">
             <p class="text-danger" id="new-modal-error" hidden></p>
             <form id="new-modal-form" novalidate></form>
+            <!-- Sibling of the form so related inline create is not nested. -->
+            <div id="new-modal-related"></div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
