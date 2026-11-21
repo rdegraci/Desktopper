@@ -451,7 +451,9 @@
     header.appendChild(el("h1", { className: "h4", text: screen.title || tableName }));
     var neu = el("button", { className: "btn btn-primary", type: "button", text: "New" });
     neu.addEventListener("click", function () {
-      go("#form/" + tableName);
+      openNewModal(tableName, function () {
+        load(search.value);
+      });
     });
     header.appendChild(neu);
     main.appendChild(header);
@@ -524,6 +526,7 @@
       });
       hr.appendChild(th);
     });
+    hr.appendChild(el("th", { className: "text-end", text: "Actions" }));
     thead.appendChild(hr);
     tbl.appendChild(thead);
     var tbody = document.createElement("tbody");
@@ -599,8 +602,30 @@
               td.textContent = val == null ? "" : String(val);
               tr.appendChild(td);
             });
+            var actions = el("td", { className: "text-end text-nowrap" });
+            var editBtn = el("button", {
+              className: "btn btn-sm btn-outline-secondary me-1 row-edit",
+              type: "button",
+              text: "Edit",
+            });
+            editBtn.addEventListener("click", function (ev) {
+              ev.stopPropagation();
+              openEditModal(tableName, row.id, reloadList);
+            });
+            var destroyBtn = el("button", {
+              className: "btn btn-sm btn-outline-danger row-destroy",
+              type: "button",
+              text: "Destroy",
+            });
+            destroyBtn.addEventListener("click", function (ev) {
+              ev.stopPropagation();
+              confirmDelete(tableName, row.id, reloadList);
+            });
+            actions.appendChild(editBtn);
+            actions.appendChild(destroyBtn);
+            tr.appendChild(actions);
             tr.addEventListener("click", function () {
-              go("#form/" + tableName + "/" + row.id);
+              openDetailsModal(tableName, row.id);
             });
             tbody.appendChild(tr);
           });
@@ -608,6 +633,10 @@
         .catch(function (err) {
           showError(err.message);
         });
+    }
+
+    function reloadList() {
+      load(search.value);
     }
 
     search.addEventListener("input", function () {
@@ -1081,6 +1110,299 @@
     }
   }
 
+  // Shared by the full-page form and the New modal so both show the same
+  // fields, groups, and widgets for a table.
+  function appendFormFields(form, tableName, screen, cols, row, fkMap, idPrefix) {
+    var grouped = {};
+    var groups = (screen && screen.groups) || [];
+    groups.forEach(function (g) {
+      if (!g || !g.id || !g.columns) {
+        return;
+      }
+      (g.columns || []).forEach(function (cname) {
+        grouped[cname] = true;
+      });
+    });
+
+    function appendField(parent, col) {
+      var box = el("div", { className: "mb-3" });
+      var label = el("label", {
+        className: "form-label",
+        text: col.label || col.name,
+      });
+      label.setAttribute("for", fieldId(col, idPrefix));
+      label.style.cursor = "pointer";
+      label.title = "Target this field in Ops";
+      label.addEventListener("click", function (ev) {
+        ev.preventDefault();
+        setFocusedTarget({
+          kind: "column",
+          name: col.name,
+          table: tableName,
+        });
+      });
+      box.appendChild(label);
+      var opts = fkMap[col.name];
+      var val = row ? row[col.name] : null;
+      if (col.widget === "checkbox") {
+        var wrap = el("div", { className: "form-check" });
+        wrap.appendChild(widgetInput(col, val, opts, idPrefix));
+        box.appendChild(wrap);
+      } else {
+        box.appendChild(widgetInput(col, val, opts, idPrefix));
+      }
+      parent.appendChild(box);
+    }
+
+    function colByName(name) {
+      var i;
+      for (i = 0; i < cols.length; i++) {
+        if (cols[i].name === name) {
+          return cols[i];
+        }
+      }
+      return null;
+    }
+
+    if (groups.length) {
+      groups.forEach(function (g) {
+        if (!g || !g.columns || !g.columns.length) {
+          return;
+        }
+        var section = el("fieldset", { className: "mb-4 field-group" });
+        section.appendChild(
+          el("legend", {
+            className: "h6 field-group-label",
+            text: g.label || g.id,
+          })
+        );
+        var any = false;
+        (g.columns || []).forEach(function (cname) {
+          var col = colByName(cname);
+          if (!col) {
+            return;
+          }
+          any = true;
+          appendField(section, col);
+        });
+        if (any) {
+          form.appendChild(section);
+        }
+      });
+      cols.forEach(function (col) {
+        if (!grouped[col.name]) {
+          appendField(form, col);
+        }
+      });
+    } else {
+      cols.forEach(function (col) {
+        appendField(form, col);
+      });
+    }
+  }
+
+  function fkOptionLoads(cols) {
+    return cols
+      .filter(function (c) {
+        return c.widget === "fk" && c.fk && c.fk.table;
+      })
+      .map(function (c) {
+        return api("/api/tables/" + encodeURIComponent(c.fk.table) + "/options").then(
+          function (opts) {
+            return { name: c.name, options: opts };
+          }
+        );
+      });
+  }
+
+  function postJson(path, method, body) {
+    return fetch(path, {
+      method: method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(function (res) {
+      return res.json().then(function (data) {
+        if (!res.ok) {
+          throw new Error((data && data.error) || res.statusText);
+        }
+        return data;
+      });
+    });
+  }
+
+  var NEW_MODAL_PREFIX = "new-";
+  var newModalSeq = 0;
+
+  // `defaults` pre-fills fields, e.g. the status a kanban board starts new
+  // rows in; fields without a default stay empty as on the create form.
+  function openNewModal(tableName, onCreated, defaults) {
+    openRecordModal(tableName, null, onCreated, defaults);
+  }
+
+  function openEditModal(tableName, rowId, onSaved) {
+    openRecordModal(tableName, rowId, onSaved, null);
+  }
+
+  // One modal serves create (rowId null, POST) and edit (PUT to the row).
+  function openRecordModal(tableName, rowId, onSaved, defaults) {
+    var modalEl = document.getElementById("new-modal");
+    var form = document.getElementById("new-modal-form");
+    var titleEl = document.getElementById("new-modal-title");
+    var errEl = document.getElementById("new-modal-error");
+    var okBtn = document.getElementById("new-modal-ok");
+    var table = tableDef(tableName);
+    if (!modalEl || !form || !table || !window.bootstrap) {
+      go("#form/" + tableName + (rowId ? "/" + rowId : ""));
+      return;
+    }
+    var screen = formScreenFor(tableName);
+    var cols = visibleColumns(table);
+    var title = (screen && screen.title) || table.label || tableName;
+    titleEl.textContent = (rowId ? "Edit " : "New ") + title;
+    form.textContent = "";
+    form.setAttribute("data-table", tableName);
+    errEl.textContent = "";
+    errEl.hidden = true;
+    okBtn.disabled = true;
+    // A slow option load from an earlier open must not paint into this one.
+    var seq = ++newModalSeq;
+
+    function modalError(msg) {
+      errEl.textContent = msg || "";
+      errEl.hidden = !msg;
+    }
+
+    var rowPath = "/api/tables/" + encodeURIComponent(tableName);
+    if (rowId) {
+      rowPath += "/" + rowId;
+    }
+    var rowLoad = rowId ? api(rowPath) : Promise.resolve(defaults || null);
+
+    Promise.all([Promise.all(fkOptionLoads(cols)), rowLoad])
+      .then(function (results) {
+        if (seq !== newModalSeq) {
+          return;
+        }
+        var fkMap = {};
+        results[0].forEach(function (p) {
+          fkMap[p.name] = p.options;
+        });
+        appendFormFields(form, tableName, screen, cols, results[1], fkMap, NEW_MODAL_PREFIX);
+        okBtn.disabled = false;
+      })
+      .catch(function (err) {
+        modalError(err.message);
+      });
+
+    function submit(ev) {
+      ev.preventDefault();
+      if (okBtn.disabled) {
+        return;
+      }
+      modalError("");
+      var body = {};
+      cols.forEach(function (col) {
+        body[col.name] = readField(col, NEW_MODAL_PREFIX);
+      });
+      okBtn.disabled = true;
+      postJson(rowPath, rowId ? "PUT" : "POST", body)
+        .then(function (data) {
+          window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+          if (onSaved) {
+            onSaved(data);
+          }
+        })
+        .catch(function (err) {
+          modalError(err.message);
+        })
+        .then(function () {
+          okBtn.disabled = false;
+        });
+    }
+    // Assigned, not added, so reopening the modal replaces the previous
+    // table's handlers instead of stacking them.
+    form.onsubmit = submit;
+    okBtn.onclick = submit;
+    window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  var detailsModalSeq = 0;
+
+  function detailsText(col, value, fkOptions) {
+    if (value == null || value === "") {
+      return null;
+    }
+    if (col.widget === "checkbox") {
+      return value === 1 || value === true ? "Yes" : "No";
+    }
+    if (col.widget === "fk" && fkOptions) {
+      var hit = fkOptions.filter(function (item) {
+        return String(item.id) === String(value);
+      })[0];
+      if (hit && hit.label != null) {
+        return String(hit.label);
+      }
+    }
+    return String(value);
+  }
+
+  // Read-only view of one row. Ok only dismisses; nothing is saved.
+  function openDetailsModal(tableName, rowId) {
+    var modalEl = document.getElementById("details-modal");
+    var body = document.getElementById("details-modal-body");
+    var titleEl = document.getElementById("details-modal-title");
+    var errEl = document.getElementById("details-modal-error");
+    var table = tableDef(tableName);
+    if (!modalEl || !body || !table || !window.bootstrap) {
+      go("#form/" + tableName + "/" + rowId);
+      return;
+    }
+    var screen = formScreenFor(tableName);
+    var cols = visibleColumns(table);
+    titleEl.textContent = (screen && screen.title) || table.label || tableName;
+    body.textContent = "";
+    errEl.textContent = "";
+    errEl.hidden = true;
+    var seq = ++detailsModalSeq;
+    var rowPath = "/api/tables/" + encodeURIComponent(tableName) + "/" + rowId;
+
+    Promise.all([Promise.all(fkOptionLoads(cols)), api(rowPath)])
+      .then(function (results) {
+        if (seq !== detailsModalSeq) {
+          return;
+        }
+        var fkMap = {};
+        results[0].forEach(function (p) {
+          fkMap[p.name] = p.options;
+        });
+        var row = results[1] || {};
+        cols.forEach(function (col) {
+          var text = detailsText(col, row[col.name], fkMap[col.name]);
+          body.appendChild(
+            el("dt", { className: "col-sm-4", text: col.label || col.name })
+          );
+          var dd = el("dd", {
+            className: "col-sm-8 text-break" + (text == null ? " text-muted" : ""),
+            text: text == null ? "\u2014" : text,
+          });
+          dd.style.whiteSpace = "pre-wrap";
+          body.appendChild(dd);
+        });
+      })
+      .catch(function (err) {
+        if (seq !== detailsModalSeq) {
+          return;
+        }
+        errEl.textContent = err.message || "";
+        errEl.hidden = !err.message;
+      });
+    window.bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  }
+
+  // layout.js loads first and calls this at click time, so Home widgets can
+  // reuse the same create modal as list screens.
+  window.DesktopperApp = { openNewModal: openNewModal };
+
   function drawForm(tableName, rowId, query) {
     var main = document.getElementById("main");
     var table = tableDef(tableName);
@@ -1104,106 +1426,11 @@
     var cols = visibleColumns(table).filter(function (c) {
       return query[c.name] === undefined;
     });
-    var fkLoads = cols
-      .filter(function (c) {
-        return c.widget === "fk" && c.fk && c.fk.table;
-      })
-      .map(function (c) {
-        return api("/api/tables/" + encodeURIComponent(c.fk.table) + "/options").then(
-          function (opts) {
-            return { name: c.name, options: opts };
-          }
-        );
-      });
+    var fkLoads = fkOptionLoads(cols);
 
     function paint(row, fkMap) {
       form.textContent = "";
-      var grouped = {};
-      var groups = (screen && screen.groups) || [];
-      groups.forEach(function (g) {
-        if (!g || !g.id || !g.columns) {
-          return;
-        }
-        (g.columns || []).forEach(function (cname) {
-          grouped[cname] = true;
-        });
-      });
-
-      function appendField(parent, col) {
-        var box = el("div", { className: "mb-3" });
-        var label = el("label", {
-          className: "form-label",
-          text: col.label || col.name,
-        });
-        label.setAttribute("for", "f-" + col.name);
-        label.style.cursor = "pointer";
-        label.title = "Target this field in Ops";
-        label.addEventListener("click", function (ev) {
-          ev.preventDefault();
-          setFocusedTarget({
-            kind: "column",
-            name: col.name,
-            table: tableName,
-          });
-        });
-        box.appendChild(label);
-        var opts = fkMap[col.name];
-        var val = row ? row[col.name] : null;
-        if (col.widget === "checkbox") {
-          var wrap = el("div", { className: "form-check" });
-          wrap.appendChild(widgetInput(col, val, opts));
-          box.appendChild(wrap);
-        } else {
-          box.appendChild(widgetInput(col, val, opts));
-        }
-        parent.appendChild(box);
-      }
-
-      function colByName(name) {
-        var i;
-        for (i = 0; i < cols.length; i++) {
-          if (cols[i].name === name) {
-            return cols[i];
-          }
-        }
-        return null;
-      }
-
-      if (groups.length) {
-        groups.forEach(function (g) {
-          if (!g || !g.columns || !g.columns.length) {
-            return;
-          }
-          var section = el("fieldset", { className: "mb-4 field-group" });
-          section.appendChild(
-            el("legend", {
-              className: "h6 field-group-label",
-              text: g.label || g.id,
-            })
-          );
-          var any = false;
-          (g.columns || []).forEach(function (cname) {
-            var col = colByName(cname);
-            if (!col) {
-              return;
-            }
-            any = true;
-            appendField(section, col);
-          });
-          if (any) {
-            form.appendChild(section);
-          }
-        });
-        cols.forEach(function (col) {
-          if (!grouped[col.name]) {
-            appendField(form, col);
-          }
-        });
-      } else {
-        cols.forEach(function (col) {
-          appendField(form, col);
-        });
-      }
+      appendFormFields(form, tableName, screen, cols, row, fkMap);
       var actions = el("div", { className: "d-flex gap-2" });
       var save = el("button", { className: "btn btn-primary", type: "submit", text: "Save" });
       actions.appendChild(save);
@@ -1246,19 +1473,7 @@
           path += "/" + rowId;
           method = "PUT";
         }
-        fetch(path, {
-          method: method,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        })
-          .then(function (res) {
-            return res.json().then(function (data) {
-              if (!res.ok) {
-                throw new Error((data && data.error) || res.statusText);
-              }
-              return data;
-            });
-          })
+        postJson(path, method, body)
           .then(function (data) {
             if (related.length && data && data.id) {
               go("#form/" + tableName + "/" + data.id);
@@ -1626,6 +1841,10 @@
             var modalEl = document.getElementById("confirm-modal");
             if (window.bootstrap && modalEl) {
               window.bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+            }
+            if (typeof info.after === "function") {
+              info.after();
+              return;
             }
             go(info.after || "#list/" + info.table);
           })

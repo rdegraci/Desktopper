@@ -165,6 +165,29 @@
       return;
     }
 
+    var toolbar = el("div", { className: "d-flex justify-content-end mb-2" });
+    var newBtn = el("button", {
+      className: "btn btn-sm btn-primary kanban-new",
+      type: "button",
+      text: "New",
+    });
+    newBtn.addEventListener("click", function () {
+      var app = global.DesktopperApp;
+      if (!app || !app.openNewModal) {
+        location.hash = "#form/" + table;
+        return;
+      }
+      // New rows start in the board's first status column.
+      var enumValues = kanbanEnumValues(schema, table, column);
+      var defaults = {};
+      if (enumValues && enumValues.length) {
+        defaults[column] = enumValues[0];
+      }
+      app.openNewModal(table, reload, defaults);
+    });
+    toolbar.appendChild(newBtn);
+    container.appendChild(toolbar);
+
     var errorEl = el("p", { className: "text-danger small mb-2", text: "" });
     errorEl.hidden = true;
     container.appendChild(errorEl);

@@ -132,6 +132,35 @@ class KanbanUxTests(unittest.TestCase):
         )
         self.assertEqual(status_col["enum"], ["unstarted", "started", "done"])
 
+    def test_kanban_new_opens_modal_not_form_route(self) -> None:
+        text = (repo_root() / "static" / "js" / "layout.js").read_text(encoding="utf-8")
+        start = text.index("function renderKanban(")
+        end = text.index("function calendarDateKey(", start)
+        kanban = text[start:end]
+        self.assertIn('text: "New"', kanban)
+        self.assertIn("app.openNewModal(table, reload, defaults)", kanban)
+        self.assertIn("defaults[column] = enumValues[0]", kanban)
+        # Existing-card click and drag-and-drop are unchanged.
+        self.assertIn('location.hash = "#form/" + table + "/" + row.id;', kanban)
+        self.assertIn('method: "PUT"', kanban)
+        app_js = self.client.get("/js/app.js").get_data(as_text=True)
+        self.assertIn("window.DesktopperApp = { openNewModal: openNewModal }", app_js)
+        self.assertIn("function openNewModal(tableName, onCreated, defaults)", app_js)
+
+    def test_kanban_create_with_default_status_lands_on_board(self) -> None:
+        created = self.client.post(
+            "/api/tables/tasks", json={"title": "From board", "status": "unstarted"}
+        )
+        self.assertEqual(created.status_code, 201)
+        rows = self.client.get("/api/tables/tasks?limit=200").get_json()
+        self.assertEqual(
+            [(r["title"], r["status"]) for r in rows], [("From board", "unstarted")]
+        )
+        bad = self.client.post("/api/tables/tasks", json={"title": "No status"})
+        self.assertGreaterEqual(bad.status_code, 400)
+        self.assertIn("error", bad.get_json())
+        self.assertEqual(len(self.client.get("/api/tables/tasks").get_json()), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

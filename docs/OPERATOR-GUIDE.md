@@ -162,7 +162,8 @@ You cannot create another account with role `owner` through the Users panel.
 - Use hash routes such as `#list/contacts` and `#form/contacts/1`.
 - After Ops applies a schema change, return to Home and **refresh**. Home does not live-update.
 - Navbar **Ops** opens `/ops` in the same tab. The app does not redirect `/` to Ops by itself.
-- Layout dashboards may include a **kanban** (drag status, click to open form) and a **calendar** month grid (prev/next, click item to open form).
+- On a list screen, each row has **Edit** and **Destroy**. **Edit** opens a modal with the row's form fields. **Ok** saves the changes and **Cancel** discards them. If the save fails, the error stays in the modal. **Destroy** asks you to confirm, then deletes the row and refreshes the list. Click anywhere else on the row to see its details in a read-only modal. Empty fields show a dash. **Ok** closes the modal and does not save.
+- Layout dashboards may include a **kanban** (drag status, click to open form, **New** opens a create modal with the first status set) and a **calendar** month grid (prev/next, click item to open form).
 - Unread notices show on the navbar badge when reminders or rules create them.
 - CSV import appears on Home only when import profiles exist in schema.
 - Login is required for owner-only actions and for grant-aware visibility beyond guest.
