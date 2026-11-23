@@ -40,7 +40,7 @@ class DaemonSettingsApiTests(unittest.TestCase):
         ensure_host_tables(self.cfg.appdir)
         with contextlib.redirect_stdout(io.StringIO()):
             ensure_owner(self.cfg)
-        self.plist = self.appdir / "LaunchAgents" / f"{daemon.LABEL}.plist"
+        self.plist = self.appdir / "LaunchDaemons" / f"{daemon.LABEL}.plist"
         patches = [
             mock.patch.object(daemon, "plist_path", return_value=self.plist),
             mock.patch.object(daemon, "spawn_restart"),
@@ -71,7 +71,7 @@ class DaemonSettingsApiTests(unittest.TestCase):
     def test_status_reports_manager_and_pid(self) -> None:
         with mock.patch.object(daemon, "agent_pid", return_value=os.getpid()):
             body = self._client().get("/api/daemon").get_json()
-        self.assertEqual(body["managed_by"], "launchagent")
+        self.assertEqual(body["managed_by"], "launchdaemon")
         self.assertEqual(body["pid"], os.getpid())
         self.assertEqual(body["label"], daemon.LABEL)
         self.assertFalse(body["installed"])
@@ -88,7 +88,7 @@ class DaemonSettingsApiTests(unittest.TestCase):
             resp = self._client(port=9123).post("/api/daemon/restart")
             self.spawn.assert_not_called()
             self.assertEqual(resp.status_code, 200)
-            self.assertEqual(resp.get_json()["managed_by"], "launchagent")
+            self.assertEqual(resp.get_json()["managed_by"], "launchdaemon")
             resp.close()
         self.spawn.assert_called_once()
         appdir, port = self.spawn.call_args.args

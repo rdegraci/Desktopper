@@ -99,12 +99,13 @@ If you started the server in a terminal, stop it with Ctrl+C. If you started it 
 | Command | Result |
 |---|---|
 | `desktopper daemon start` | Starts the server in the background. If the server already listens on the port, it does nothing. |
-| `desktopper daemon stop` | Stops the server that `daemon start` or the LaunchAgent started. A server that you started in a terminal is not stopped. |
-| `desktopper daemon restart` | Stops the server, then starts it. |
-| `desktopper daemon install` | Writes the LaunchAgent `~/Library/LaunchAgents/com.desktopper.server.plist`, loads it, and starts the server. The server then starts at each login. Run it again after you change Python environments or move the repo. |
-| `desktopper daemon uninstall` | Unloads the LaunchAgent, which stops its server, and removes the plist. If the agent is not installed, it does nothing. |
+| `desktopper daemon stop` | Stops the server that `daemon start` or the LaunchDaemon started. A server that you started in a terminal is not stopped. |
+| `desktopper daemon restart` | Stops the server, then starts it. When a LaunchDaemon is installed, start/restart need `sudo`. |
+| `desktopper daemon status` | Prints running/stopped, URL, pid, how it is managed, and whether the LaunchDaemon is installed/loaded. |
+| `desktopper daemon install` | Writes the system LaunchDaemon `/Library/LaunchDaemons/com.desktopper.server.plist` (requires `sudo`), loads it, and starts the server. It runs as your user, keeps your appdir, and survives logout / headless use. Run it again after you change Python environments or move the repo. |
+| `desktopper daemon uninstall` | Unloads and removes the LaunchDaemon (`sudo`). Also removes any legacy per-user LaunchAgent. If nothing is installed, it does nothing. |
 
-To use a port other than `server.port`, put `--port N` before `daemon`, for example `desktopper --port 8123 daemon install`. The LaunchAgent records that port.
+To use a port other than `server.port`, put `--port N` before `daemon`, for example `sudo desktopper --port 8123 daemon install`. The LaunchDaemon records that port.
 
 The daemon does not change the bind address. The server reads `server.bind` from `conf.yaml`, and the bind rules below apply.
 

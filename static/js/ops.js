@@ -1932,17 +1932,17 @@
   var daemonPid = null;
 
   function describeDaemon(data) {
-    if (data.managed_by === "launchagent") {
-      return "Running as LaunchAgent " + data.label + ".";
+    if (data.managed_by === "launchdaemon" || data.managed_by === "launchagent") {
+      return "Running as LaunchDaemon " + data.label + ".";
     }
     if (data.managed_by === "pidfile") {
       return "Running in the background (started with `desktopper daemon start`).";
     }
     var msg = "This server is not running as the daemon, so it cannot restart itself.";
     if (data.installed) {
-      msg += " LaunchAgent " + data.label + " is installed but does not own this server.";
+      msg += " LaunchDaemon " + data.label + " is installed but does not own this server.";
     } else {
-      msg += " Run `desktopper daemon install` to run it as a LaunchAgent.";
+      msg += " Run `sudo desktopper daemon install` to run it as a LaunchDaemon.";
     }
     return msg;
   }

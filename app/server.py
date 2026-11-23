@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import json
 import os
 import sys
@@ -796,6 +797,9 @@ def main(argv: list[str] | None = None) -> None:
     start_scheduler(cfg)
     app = create_app(port=args.port)
     log_server_start(cfg)
+    # Pidfile lets `daemon stop` signal LaunchDaemon-started processes without root.
+    daemon.write_pidfile(cfg.appdir)
+    atexit.register(daemon.clear_pidfile, cfg.appdir)
     print(f"http://{cfg.bind}:{cfg.port}/", flush=True)
     app.run(host=cfg.bind, port=cfg.port, debug=False, use_reloader=False)
 
